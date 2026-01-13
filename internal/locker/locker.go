@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -79,7 +80,7 @@ func Lock(passphrase, filePath string) string {
 	encryptSmallFile(gcm, salt, filePath, encryptedFilePath)
 	overWriteGarbageAndDelete(filePath)
 
-	return encryptedFilePath
+	return "[+] Locked   " + encryptedFilePath
 }
 
 func getSaltFromEncryptedFile(encryptedFilePath string) []byte {
@@ -100,5 +101,47 @@ func decrypt(gcm cipher.AEAD, nonce, encryptedData []byte) ([]byte, error) {
 	return originalData, nil
 }
 
-func DecryptFile(passphrase, filePath string) {
+func decryptFileName(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
+	dirpathToFile, encryptedFileName := filepath.Split(encryptedFilePath)
+	removedIdentifierFileName, _ := strings.CutSuffix(encryptedFileName, identifierExtension)
+
+	decodedFileName, err := base64.RawURLEncoding.DecodeString(removedIdentifierFileName)
+	if err != nil {
+		return "", err
+	}
+
+	originalFileName, err := decrypt(gcm, decodedFileName[:gcm.NonceSize()], decodedFileName[gcm.NonceSize():])
+	if err != nil {
+		return "", err
+	}
+
+	return dirpathToFile + string(originalFileName), nil
+}
+
+func decryptSmallFile(gcm cipher.AEAD, encryptedFilePath, originalFilePath string) {
+	encryptedFileContent, _ := os.ReadFile(encryptedFilePath)
+
+	nonce := encryptedFileContent[saltSize : saltSize+gcm.NonceSize()]
+	encryptedData := encryptedFileContent[saltSize+gcm.NonceSize():]
+	originalFileContent, _ := decrypt(gcm, nonce, encryptedData)
+
+	os.WriteFile(originalFilePath, originalFileContent, 0o644)
+}
+
+func Unlock(passphrase, encryptedFilePath string) string {
+	salt := getSaltFromEncryptedFile(encryptedFilePath)
+
+	key := driveKey([]byte(passphrase), salt)
+	block, _ := aes.NewCipher(key)
+	gcm, _ := cipher.NewGCM(block)
+
+	originalFilePath, err := decryptFileName(gcm, encryptedFilePath)
+	if err != nil {
+		return "[-] Invalid Passphrase"
+	}
+
+	decryptSmallFile(gcm, encryptedFilePath, originalFilePath)
+	os.Remove(encryptedFilePath)
+
+	return "[+] Unlocked   " + originalFilePath
 }

@@ -20,8 +20,10 @@ func main() {
 	}
 
 	if os.Args[1] == "lock" {
-		encryptedFilePath := locker.Lock(passphrase, filePath)
-		fmt.Println("[+] Locked   ", encryptedFilePath)
+		result := locker.Lock(passphrase, filePath)
+		fmt.Println(result)
 	} else if os.Args[1] == "unlock" {
+		result := locker.Unlock(passphrase, filePath)
+		fmt.Println(result)
 	}
 }
