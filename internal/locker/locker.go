@@ -35,10 +35,11 @@ func encryptFileName(gcm cipher.AEAD, filePath string) string {
 	return dirpathToFile + base64.RawURLEncoding.EncodeToString(encryptedFileName) + identifierExtension
 }
 
-func encryptSmallFile(gcm cipher.AEAD, originalFilePath, encryptedFilePath string) {
+func encryptSmallFile(gcm cipher.AEAD, salt []byte, originalFilePath, encryptedFilePath string) {
 	originalData, _ := os.ReadFile(originalFilePath)
 	encryptedData := encrypt(gcm, originalData)
-	os.WriteFile(encryptedFilePath, encryptedData, 0o644)
+	dataToWrite := append(salt, encryptedData...)
+	os.WriteFile(encryptedFilePath, dataToWrite, 0o644)
 }
 
 func overWriteGarbageAndDelete(originalFilePath string) {
@@ -75,41 +76,29 @@ func Lock(passphrase, filePath string) string {
 	gcm, _ := cipher.NewGCM(block)
 
 	encryptedFilePath := encryptFileName(gcm, filePath)
-	encryptSmallFile(gcm, filePath, encryptedFilePath)
+	encryptSmallFile(gcm, salt, filePath, encryptedFilePath)
 	overWriteGarbageAndDelete(filePath)
 
 	return encryptedFilePath
 }
 
-func DecryptFile(key []byte, filePath string) ([]byte, error) {
-	encryptedData, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, err
-	}
+func getSaltFromEncryptedFile(encryptedFilePath string) []byte {
+	salt := make([]byte, saltSize)
 
-	block, _ := aes.NewCipher(key)
-	gcm, _ := cipher.NewGCM(block)
-
-	nonce := encryptedData[16 : 16+gcm.NonceSize()]
-	ciphertext := encryptedData[16+gcm.NonceSize():]
-
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return plaintext, nil
-}
-
-func GetSaltFromEncryptedFile(encryptedFile string) ([]byte, error) {
-	salt := make([]byte, 16)
-
-	file, err := os.Open(encryptedFile)
+	file, _ := os.Open(encryptedFilePath)
 	defer file.Close()
-	if err != nil {
-		return nil, err
-	}
 
 	file.Read(salt)
-	return salt, nil
+	return salt
+}
+
+func decrypt(gcm cipher.AEAD, nonce, encryptedData []byte) ([]byte, error) {
+	originalData, err := gcm.Open(nil, nonce, encryptedData, nil)
+	if err != nil {
+		return nil, err
+	}
+	return originalData, nil
+}
+
+func DecryptFile(passphrase, filePath string) {
 }
