@@ -1,6 +1,7 @@
 package locker
 
 import (
+	"bufio"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -12,8 +13,9 @@ import (
 )
 
 const (
-	identifierExtension = ".locked"
-	saltSize            = 16
+	identifierExtension     = ".locked"
+	saltSize                = 16
+	defaultGarbageBytesSize = 100 * 1024 * 1024
 )
 
 func driveKey(passphrase, salt []byte) []byte {
@@ -39,6 +41,31 @@ func encryptSmallFile(gcm cipher.AEAD, originalFilePath, encryptedFilePath strin
 	os.WriteFile(encryptedFilePath, encryptedData, 0o644)
 }
 
+func overWriteGarbageAndDelete(originalFilePath string) {
+	file, _ := os.OpenFile(originalFilePath, os.O_TRUNC|os.O_WRONLY, 0o000)
+	defer file.Close()
+	writer := bufio.NewWriter(file)
+
+	randomBytes := make([]byte, defaultGarbageBytesSize)
+	fileInfo, _ := os.Stat(originalFilePath)
+	fileSize := int(fileInfo.Size())
+
+	var writtenBytes int
+	for {
+		if writtenBytes+defaultGarbageBytesSize >= fileSize {
+			randomBytes = make([]byte, fileSize-writtenBytes)
+			rand.Read(randomBytes)
+			writer.Write(randomBytes)
+			break
+		}
+		rand.Read(randomBytes)
+		n, _ := writer.Write(randomBytes)
+		writtenBytes = writtenBytes + n
+	}
+
+	os.Remove(originalFilePath)
+}
+
 func Lock(passphrase, filePath string) string {
 	salt := make([]byte, saltSize)
 	rand.Read(salt)
@@ -49,6 +76,7 @@ func Lock(passphrase, filePath string) string {
 
 	encryptedFilePath := encryptFileName(gcm, filePath)
 	encryptSmallFile(gcm, filePath, encryptedFilePath)
+	overWriteGarbageAndDelete(filePath)
 
 	return encryptedFilePath
 }
