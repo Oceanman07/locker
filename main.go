@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 
@@ -16,17 +15,21 @@ const (
 func main() {
 	filePath := os.Args[2]
 
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("passphrase: ")
-	passphrase, err := reader.ReadString('\n')
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	passphrase := locker.GetPassphrase()
+	fmt.Println()
 
 	if os.Args[1] == lockMode {
+		fmt.Print("Confirm ")
+		confirmPassphrase := locker.GetPassphrase()
+		if confirmPassphrase != passphrase {
+			fmt.Println("[-] Passphrases didn't match")
+			return
+		}
+		fmt.Println()
+
 		result := locker.Lock(passphrase, filePath)
 		fmt.Println(result)
+
 	} else if os.Args[1] == unlockMode {
 		result := locker.Unlock(passphrase, filePath)
 		fmt.Println(result)
