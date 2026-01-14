@@ -6,9 +6,12 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"Locker/internal/fileutil"
 
 	"golang.org/x/crypto/argon2"
 )
@@ -16,7 +19,8 @@ import (
 const (
 	identifierExtension     = ".locked"
 	saltSize                = 16
-	defaultGarbageBytesSize = 100 * 1024 * 1024
+	defaultGarbageBytesSize = 50 * 1024 * 1024
+	chunkForBigFileSize     = defaultGarbageBytesSize
 )
 
 func driveKey(passphrase, salt []byte) []byte {
@@ -41,6 +45,31 @@ func encryptSmallFile(gcm cipher.AEAD, salt []byte, originalFilePath, encryptedF
 	encryptedData := encrypt(gcm, originalData)
 	dataToWrite := append(salt, encryptedData...)
 	os.WriteFile(encryptedFilePath, dataToWrite, 0o644)
+}
+
+func encrypteBigFile(gcm cipher.AEAD, salt []byte, originalFilePath, encryptedFilePath string) {
+	originalFile, _ := os.Open(originalFilePath)
+	defer originalFile.Close()
+	reader := bufio.NewReader(originalFile)
+
+	encryptedFile, _ := os.OpenFile(encryptedFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
+	defer encryptedFile.Close()
+	writer := bufio.NewWriter(encryptedFile)
+	defer writer.Flush()
+
+	// store salt at the beginning of the file
+	writer.Write(salt)
+
+	chunk := make([]byte, chunkForBigFileSize)
+	for {
+		n, err := reader.Read(chunk)
+		if err == io.EOF {
+			break
+		}
+
+		encryptedChunk := encrypt(gcm, chunk[:n])
+		writer.Write(encryptedChunk)
+	}
 }
 
 func overWriteGarbageAndDelete(originalFilePath string) {
@@ -77,7 +106,11 @@ func Lock(passphrase, filePath string) string {
 	gcm, _ := cipher.NewGCM(block)
 
 	encryptedFilePath := encryptFileName(gcm, filePath)
-	encryptSmallFile(gcm, salt, filePath, encryptedFilePath)
+	if fileutil.IsSmallFile(filePath, false) {
+		encryptSmallFile(gcm, salt, filePath, encryptedFilePath)
+	} else {
+		encrypteBigFile(gcm, salt, filePath, encryptedFilePath)
+	}
 	overWriteGarbageAndDelete(filePath)
 
 	return "[+] Locked   " + encryptedFilePath
@@ -123,9 +156,35 @@ func decryptSmallFile(gcm cipher.AEAD, encryptedFilePath, originalFilePath strin
 
 	nonce := encryptedFileContent[saltSize : saltSize+gcm.NonceSize()]
 	encryptedData := encryptedFileContent[saltSize+gcm.NonceSize():]
+	// ignore err cause if decryptFileName get the job done which means the key is valid
 	originalFileContent, _ := decrypt(gcm, nonce, encryptedData)
 
 	os.WriteFile(originalFilePath, originalFileContent, 0o644)
+}
+
+func decryptBigFile(gcm cipher.AEAD, encryptedFilePath, originalFilePath string) {
+	encryptedFile, _ := os.Open(encryptedFilePath)
+	encryptedFile.Seek(saltSize, io.SeekStart) // skip salt
+	defer encryptedFile.Close()
+	reader := bufio.NewReader(encryptedFile)
+
+	originalFile, _ := os.OpenFile(originalFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
+	defer originalFile.Close()
+	writer := bufio.NewWriter(originalFile)
+	defer writer.Flush()
+
+	// the encrypted chunk is nonce+encryptedData+tag (12bytes + 50MB + 28bytes)
+	encryptedChunkSize := gcm.NonceSize() + chunkForBigFileSize + gcm.Overhead()
+	encryptedChunk := make([]byte, encryptedChunkSize)
+	for {
+		n, err := reader.Read(encryptedChunk)
+		if err == io.EOF {
+			break
+		}
+
+		originalChunk, _ := decrypt(gcm, encryptedChunk[:gcm.NonceSize()], encryptedChunk[gcm.NonceSize():n])
+		writer.Write(originalChunk)
+	}
 }
 
 func Unlock(passphrase, encryptedFilePath string) string {
@@ -140,7 +199,11 @@ func Unlock(passphrase, encryptedFilePath string) string {
 		return "[-] Invalid Passphrase"
 	}
 
-	decryptSmallFile(gcm, encryptedFilePath, originalFilePath)
+	if fileutil.IsSmallFile(encryptedFilePath, true) {
+		decryptSmallFile(gcm, encryptedFilePath, originalFilePath)
+	} else {
+		decryptBigFile(gcm, encryptedFilePath, originalFilePath)
+	}
 	os.Remove(encryptedFilePath)
 
 	return "[+] Unlocked   " + originalFilePath

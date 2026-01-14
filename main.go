@@ -8,6 +8,11 @@ import (
 	"Locker/internal/locker"
 )
 
+const (
+	lockMode   = "lock"
+	unlockMode = "unlock"
+)
+
 func main() {
 	filePath := os.Args[2]
 
@@ -19,10 +24,10 @@ func main() {
 		return
 	}
 
-	if os.Args[1] == "lock" {
+	if os.Args[1] == lockMode {
 		result := locker.Lock(passphrase, filePath)
 		fmt.Println(result)
-	} else if os.Args[1] == "unlock" {
+	} else if os.Args[1] == unlockMode {
 		result := locker.Unlock(passphrase, filePath)
 		fmt.Println(result)
 	}
