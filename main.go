@@ -15,11 +15,18 @@ const (
 func main() {
 	filePath := os.Args[2]
 
+	fmt.Print("passphrase:")
 	passphrase := locker.GetPassphrase()
 	fmt.Println()
 
 	if os.Args[1] == lockMode {
-		fmt.Print("Confirm ")
+		if !locker.IsValidPassphrase(passphrase) {
+			fmt.Println("[-] Passphrase must contain at least lowercase, uppercase and 1 number")
+			return
+		}
+
+		// reconfirm passphrase
+		fmt.Print("confirm: ")
 		confirmPassphrase := locker.GetPassphrase()
 		if confirmPassphrase != passphrase {
 			fmt.Println("[-] Passphrases didn't match")

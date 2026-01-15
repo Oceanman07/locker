@@ -72,10 +72,11 @@ func encrypteBigFile(gcm cipher.AEAD, salt []byte, originalFilePath, encryptedFi
 	}
 }
 
-func overWriteGarbageAndDelete(originalFilePath string) {
+func overWriteWithGarbage(originalFilePath string) {
 	file, _ := os.OpenFile(originalFilePath, os.O_TRUNC|os.O_WRONLY, 0o000)
 	defer file.Close()
 	writer := bufio.NewWriter(file)
+	defer writer.Flush()
 
 	randomBytes := make([]byte, defaultGarbageBytesSize)
 	fileInfo, _ := os.Stat(originalFilePath)
@@ -93,8 +94,6 @@ func overWriteGarbageAndDelete(originalFilePath string) {
 		n, _ := writer.Write(randomBytes)
 		writtenBytes = writtenBytes + n
 	}
-
-	os.Remove(originalFilePath)
 }
 
 func Lock(passphrase, filePath string) string {
@@ -111,7 +110,8 @@ func Lock(passphrase, filePath string) string {
 	} else {
 		encrypteBigFile(gcm, salt, filePath, encryptedFilePath)
 	}
-	overWriteGarbageAndDelete(filePath)
+	overWriteWithGarbage(filePath)
+	os.Remove(filePath)
 
 	return "[+] Locked   " + encryptedFilePath
 }
