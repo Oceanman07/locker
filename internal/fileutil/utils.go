@@ -1,6 +1,7 @@
 package fileutil
 
 import (
+	"errors"
 	"os"
 )
 
@@ -24,4 +25,12 @@ func GetFileSize(filePath string) int {
 		return 0
 	}
 	return int(fileInfo.Size())
+}
+
+func IsExist(path string) bool {
+	_, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+	return true
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"Locker/internal/fileutil"
 	"Locker/internal/locker"
 	"Locker/internal/parser"
 )
@@ -16,6 +17,11 @@ func main() {
 	args, err := parser.ParseArgs()
 	if err != nil {
 		fmt.Println(err)
+		return
+	}
+
+	if !fileutil.IsExist(args.Path) {
+		fmt.Println("[-] Path not found")
 		return
 	}
 
