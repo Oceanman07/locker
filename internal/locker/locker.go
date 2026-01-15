@@ -6,6 +6,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -72,31 +73,37 @@ func encrypteBigFile(gcm cipher.AEAD, salt []byte, originalFilePath, encryptedFi
 	}
 }
 
-func overWriteWithGarbage(originalFilePath string) {
-	file, _ := os.OpenFile(originalFilePath, os.O_TRUNC|os.O_WRONLY, 0o000)
-	defer file.Close()
-	writer := bufio.NewWriter(file)
-	defer writer.Flush()
-
+func overWriteWithGarbage(originalFilePath string, passes int) {
 	randomBytes := make([]byte, defaultGarbageBytesSize)
 	fileInfo, _ := os.Stat(originalFilePath)
 	fileSize := int(fileInfo.Size())
 
-	var writtenBytes int
-	for {
-		if writtenBytes+defaultGarbageBytesSize >= fileSize {
-			randomBytes = make([]byte, fileSize-writtenBytes)
+	var writtenPasses int
+	for writtenPasses != passes {
+		file, _ := os.OpenFile(originalFilePath, os.O_TRUNC|os.O_WRONLY, 0o000)
+		defer file.Close()
+		writer := bufio.NewWriter(file)
+		defer writer.Flush()
+
+		var writtenBytes int
+		for {
+			fmt.Println("garbaging...")
+			if writtenBytes+defaultGarbageBytesSize >= fileSize {
+				lastRandomBytes := make([]byte, fileSize-writtenBytes)
+				rand.Read(lastRandomBytes)
+				writer.Write(lastRandomBytes)
+				break
+			}
 			rand.Read(randomBytes)
-			writer.Write(randomBytes)
-			break
+			n, _ := writer.Write(randomBytes)
+			writtenBytes = writtenBytes + n
 		}
-		rand.Read(randomBytes)
-		n, _ := writer.Write(randomBytes)
-		writtenBytes = writtenBytes + n
+		writtenPasses += 1
+		fmt.Println("Written passes:", writtenPasses)
 	}
 }
 
-func Lock(passphrase, filePath string) string {
+func Lock(passphrase, filePath string, overWriteWithGarbagePasses int) string {
 	salt := make([]byte, saltSize)
 	rand.Read(salt)
 
@@ -110,7 +117,7 @@ func Lock(passphrase, filePath string) string {
 	} else {
 		encrypteBigFile(gcm, salt, filePath, encryptedFilePath)
 	}
-	overWriteWithGarbage(filePath)
+	overWriteWithGarbage(filePath, overWriteWithGarbagePasses)
 	os.Remove(filePath)
 
 	return "[+] Locked   " + encryptedFilePath

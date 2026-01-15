@@ -12,6 +12,8 @@ const (
 	unlockMode         = "unlock"
 	positionalArgsNum  = 1 // only one file or directory path
 	subcommandPosition = 1
+	// default args value
+	defaultOverwriteWithGarbagePasses = 1
 )
 
 type CmdArgs struct {
@@ -22,7 +24,8 @@ type CmdArgs struct {
 }
 
 type lockModeArgs struct {
-	SkipValidatePassphrase bool
+	SkipValidatePassphrase     bool
+	OverwriteWithGarbagePasses int
 }
 
 type unlockModeArgs struct{}
@@ -34,6 +37,7 @@ func parseLockModeArgs() (CmdArgs, error) {
 	fs := flag.NewFlagSet(lockMode, flag.ContinueOnError)
 
 	fs.BoolVar(&args.LockArgs.SkipValidatePassphrase, "skip-val", false, "enable to skip validate the passphrase")
+	fs.IntVar(&args.LockArgs.OverwriteWithGarbagePasses, "overwrite", defaultOverwriteWithGarbagePasses, "set number of passes to overwrite with garbage data")
 
 	fs.Parse(os.Args[subcommandPosition+1:])
 

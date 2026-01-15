@@ -46,7 +46,7 @@ func main() {
 		}
 		fmt.Println()
 
-		result := locker.Lock(passphrase, args.Path)
+		result := locker.Lock(passphrase, args.Path, args.LockArgs.OverwriteWithGarbagePasses)
 		fmt.Println(result)
 
 	} else if args.Mode == unlockMode {
