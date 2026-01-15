@@ -3,6 +3,7 @@ package fileutil
 import (
 	"errors"
 	"os"
+	"path/filepath"
 )
 
 const (
@@ -33,4 +34,33 @@ func IsExist(path string) bool {
 		return false
 	}
 	return true
+}
+
+func IsRegularFile(path string) bool {
+	fileInfo, _ := os.Stat(path)
+	if fileInfo.IsDir() {
+		return false
+	}
+	return true
+}
+
+func ListDir(rootDir string, isRecursive bool) []string {
+	var filePaths []string
+
+	paths, _ := os.ReadDir(rootDir)
+	for _, path := range paths {
+		if path.IsDir() {
+			if !isRecursive {
+				continue
+			}
+			dirPath := filepath.Join(rootDir, path.Name())
+			filePaths = append(filePaths, ListDir(dirPath, isRecursive)...)
+
+		} else {
+			filePath := filepath.Join(rootDir, path.Name())
+			filePaths = append(filePaths, filePath)
+		}
+	}
+
+	return filePaths
 }

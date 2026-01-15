@@ -6,7 +6,6 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -54,9 +53,7 @@ func encrypteBigFile(gcm cipher.AEAD, salt []byte, originalFilePath, encryptedFi
 	reader := bufio.NewReader(originalFile)
 
 	encryptedFile, _ := os.OpenFile(encryptedFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
-	defer encryptedFile.Close()
-	writer := bufio.NewWriter(encryptedFile)
-	defer writer.Flush()
+	defer encryptedFile.Close() writer := bufio.NewWriter(encryptedFile) defer writer.Flush()
 
 	// store salt at the beginning of the file
 	writer.Write(salt)
@@ -87,7 +84,6 @@ func overWriteWithGarbage(originalFilePath string, passes int) {
 
 		var writtenBytes int
 		for {
-			fmt.Println("garbaging...")
 			if writtenBytes+defaultGarbageBytesSize >= fileSize {
 				lastRandomBytes := make([]byte, fileSize-writtenBytes)
 				rand.Read(lastRandomBytes)
@@ -99,7 +95,6 @@ func overWriteWithGarbage(originalFilePath string, passes int) {
 			writtenBytes = writtenBytes + n
 		}
 		writtenPasses += 1
-		fmt.Println("Written passes:", writtenPasses)
 	}
 }
 

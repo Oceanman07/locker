@@ -13,6 +13,34 @@ const (
 	unlockMode = "unlock"
 )
 
+func processLocking(args parser.CmdArgs, passphrase string) {
+	if fileutil.IsRegularFile(args.Path) {
+		result := locker.Lock(passphrase, args.Path, args.LockArgs.OverwriteWithGarbagePasses)
+		fmt.Println(result)
+	} else {
+		filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
+
+		for _, path := range filePaths {
+			result := locker.Lock(passphrase, path, args.LockArgs.OverwriteWithGarbagePasses)
+			fmt.Println(result)
+		}
+	}
+}
+
+func processUnlocking(args parser.CmdArgs, passphrase string) {
+	if fileutil.IsRegularFile(args.Path) {
+		result := locker.Unlock(passphrase, args.Path)
+		fmt.Println(result)
+	} else {
+		filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
+
+		for _, path := range filePaths {
+			result := locker.Unlock(passphrase, path)
+			fmt.Println(result)
+		}
+	}
+}
+
 func main() {
 	args, err := parser.ParseArgs()
 	if err != nil {
@@ -46,11 +74,9 @@ func main() {
 		}
 		fmt.Println()
 
-		result := locker.Lock(passphrase, args.Path, args.LockArgs.OverwriteWithGarbagePasses)
-		fmt.Println(result)
+		processLocking(args, passphrase)
 
 	} else if args.Mode == unlockMode {
-		result := locker.Unlock(passphrase, args.Path)
-		fmt.Println(result)
+		processUnlocking(args, passphrase)
 	}
 }

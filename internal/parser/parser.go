@@ -17,10 +17,11 @@ const (
 )
 
 type CmdArgs struct {
-	Mode       string
-	Path       string
-	LockArgs   lockModeArgs
-	UnlockArgs unlockModeArgs
+	Mode                     string
+	Path                     string
+	ProcessSubdirRecursively bool
+	LockArgs                 lockModeArgs
+	UnlockArgs               unlockModeArgs
 }
 
 type lockModeArgs struct {
@@ -36,6 +37,9 @@ func parseLockModeArgs() (CmdArgs, error) {
 
 	fs := flag.NewFlagSet(lockMode, flag.ContinueOnError)
 
+	// general args using by both lock and unlock mode
+	fs.BoolVar(&args.ProcessSubdirRecursively, "r", false, "process subdirectories recursively")
+	// lock mode args
 	fs.BoolVar(&args.LockArgs.SkipValidatePassphrase, "skip-val", false, "enable to skip validate the passphrase")
 	fs.IntVar(&args.LockArgs.OverwriteWithGarbagePasses, "overwrite", defaultOverwriteWithGarbagePasses, "set number of passes to overwrite with garbage data")
 
@@ -57,6 +61,9 @@ func parseUnlockArgs() (CmdArgs, error) {
 	args.Mode = unlockMode
 
 	fs := flag.NewFlagSet(unlockMode, flag.ContinueOnError)
+
+	// general args using by both lock and unlock mode
+	fs.BoolVar(&args.ProcessSubdirRecursively, "r", false, "process subdirectories recursively")
 
 	fs.Parse(os.Args[subcommandPosition+1:])
 
