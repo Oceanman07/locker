@@ -4,9 +4,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
+	identifierExtension    = ".locked"
 	oneShotForOriginalSize = 50 * 1024 * 1024 // one shot for <= 50MB file
 	// the exact 50MB file after encrypting will be salt(16bytes) + nonce(12bytes) + encryptedData(remained 50MB) + tag(16bytes)
 	oneShotForEncryptedSize = 16 + 12 + oneShotForOriginalSize + 16
@@ -63,4 +65,20 @@ func ListDir(rootDir string, isRecursive bool) []string {
 	}
 
 	return filePaths
+}
+
+func FilterFiles(filePaths []string, isEncrypted bool) []string {
+	var filterFiles []string
+	for _, path := range filePaths {
+		if isEncrypted {
+			if strings.HasSuffix(path, identifierExtension) {
+				filterFiles = append(filterFiles, path)
+			}
+		} else {
+			if !strings.HasSuffix(path, identifierExtension) {
+				filterFiles = append(filterFiles, path)
+			}
+		}
+	}
+	return filterFiles
 }

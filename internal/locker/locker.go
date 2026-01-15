@@ -17,7 +17,9 @@ import (
 )
 
 const (
-	identifierExtension     = ".locked"
+	LockMode                = "lock"
+	UnlockMode              = "unlock"
+	IdentifierExtension     = ".locked"
 	saltSize                = 16
 	defaultGarbageBytesSize = 50 * 1024 * 1024
 	chunkForBigFileSize     = defaultGarbageBytesSize
@@ -37,7 +39,7 @@ func encrypt(gcm cipher.AEAD, data []byte) []byte {
 func encryptFileName(gcm cipher.AEAD, filePath string) string {
 	dirpathToFile, fileName := filepath.Split(filePath)
 	encryptedFileName := encrypt(gcm, []byte(fileName))
-	return dirpathToFile + base64.RawURLEncoding.EncodeToString(encryptedFileName) + identifierExtension
+	return dirpathToFile + base64.RawURLEncoding.EncodeToString(encryptedFileName) + IdentifierExtension
 }
 
 func encryptSmallFile(gcm cipher.AEAD, salt []byte, originalFilePath, encryptedFilePath string) {
@@ -53,7 +55,9 @@ func encrypteBigFile(gcm cipher.AEAD, salt []byte, originalFilePath, encryptedFi
 	reader := bufio.NewReader(originalFile)
 
 	encryptedFile, _ := os.OpenFile(encryptedFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
-	defer encryptedFile.Close() writer := bufio.NewWriter(encryptedFile) defer writer.Flush()
+	defer encryptedFile.Close()
+	writer := bufio.NewWriter(encryptedFile)
+	defer writer.Flush()
 
 	// store salt at the beginning of the file
 	writer.Write(salt)
@@ -138,7 +142,7 @@ func decrypt(gcm cipher.AEAD, nonce, encryptedData []byte) ([]byte, error) {
 
 func decryptFileName(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 	dirpathToFile, encryptedFileName := filepath.Split(encryptedFilePath)
-	removedIdentifierFileName, _ := strings.CutSuffix(encryptedFileName, identifierExtension)
+	removedIdentifierFileName, _ := strings.CutSuffix(encryptedFileName, IdentifierExtension)
 
 	decodedFileName, err := base64.RawURLEncoding.DecodeString(removedIdentifierFileName)
 	if err != nil {

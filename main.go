@@ -8,19 +8,15 @@ import (
 	"Locker/internal/parser"
 )
 
-const (
-	lockMode   = "lock"
-	unlockMode = "unlock"
-)
-
 func processLocking(args parser.CmdArgs, passphrase string) {
 	if fileutil.IsRegularFile(args.Path) {
 		result := locker.Lock(passphrase, args.Path, args.LockArgs.OverwriteWithGarbagePasses)
 		fmt.Println(result)
 	} else {
 		filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
+		normalFiles := fileutil.FilterFiles(filePaths, false)
 
-		for _, path := range filePaths {
+		for _, path := range normalFiles {
 			result := locker.Lock(passphrase, path, args.LockArgs.OverwriteWithGarbagePasses)
 			fmt.Println(result)
 		}
@@ -33,8 +29,9 @@ func processUnlocking(args parser.CmdArgs, passphrase string) {
 		fmt.Println(result)
 	} else {
 		filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
+		encryptedFiles := fileutil.FilterFiles(filePaths, true)
 
-		for _, path := range filePaths {
+		for _, path := range encryptedFiles {
 			result := locker.Unlock(passphrase, path)
 			fmt.Println(result)
 		}
@@ -57,7 +54,7 @@ func main() {
 	passphrase := locker.GetPassphrase()
 	fmt.Println()
 
-	if args.Mode == lockMode {
+	if args.Mode == locker.LockMode {
 		if !args.LockArgs.SkipValidatePassphrase {
 			if !locker.IsValidPassphrase(passphrase) {
 				fmt.Println("[-] Passphrase must contain at least lowercase, uppercase and 1 number")
@@ -76,7 +73,7 @@ func main() {
 
 		processLocking(args, passphrase)
 
-	} else if args.Mode == unlockMode {
+	} else if args.Mode == locker.UnlockMode {
 		processUnlocking(args, passphrase)
 	}
 }

@@ -5,11 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+
+	"Locker/internal/locker"
 )
 
 const (
-	lockMode           = "lock"
-	unlockMode         = "unlock"
 	positionalArgsNum  = 1 // only one file or directory path
 	subcommandPosition = 1
 	// default args value
@@ -33,9 +33,9 @@ type unlockModeArgs struct{}
 
 func parseLockModeArgs() (CmdArgs, error) {
 	var args CmdArgs
-	args.Mode = lockMode
+	args.Mode = locker.LockMode
 
-	fs := flag.NewFlagSet(lockMode, flag.ContinueOnError)
+	fs := flag.NewFlagSet(locker.LockMode, flag.ContinueOnError)
 
 	// general args using by both lock and unlock mode
 	fs.BoolVar(&args.ProcessSubdirRecursively, "r", false, "process subdirectories recursively")
@@ -58,9 +58,9 @@ func parseLockModeArgs() (CmdArgs, error) {
 
 func parseUnlockArgs() (CmdArgs, error) {
 	var args CmdArgs
-	args.Mode = unlockMode
+	args.Mode = locker.UnlockMode
 
-	fs := flag.NewFlagSet(unlockMode, flag.ContinueOnError)
+	fs := flag.NewFlagSet(locker.UnlockMode, flag.ContinueOnError)
 
 	// general args using by both lock and unlock mode
 	fs.BoolVar(&args.ProcessSubdirRecursively, "r", false, "process subdirectories recursively")
@@ -85,9 +85,9 @@ func ParseArgs() (CmdArgs, error) {
 
 	mode := os.Args[subcommandPosition]
 	switch mode {
-	case lockMode:
+	case locker.LockMode:
 		return parseLockModeArgs()
-	case unlockMode:
+	case locker.UnlockMode:
 		return parseUnlockArgs()
 	default:
 		return CmdArgs{}, fmt.Errorf("invalid mode: %s", mode)
