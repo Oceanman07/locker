@@ -14,7 +14,13 @@ func processLocking(args parser.CmdArgs, passphrase string) {
 		fmt.Println(result)
 	} else {
 		filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
-		normalFiles := fileutil.FilterFiles(filePaths, false)
+
+		var normalFiles []string
+		if args.LockArgs.ForceToLock {
+			normalFiles = filePaths
+		} else {
+			normalFiles = fileutil.FilterFiles(filePaths, false)
+		}
 
 		for _, path := range normalFiles {
 			result := locker.Lock(passphrase, path, args.LockArgs.OverwriteWithGarbagePasses)

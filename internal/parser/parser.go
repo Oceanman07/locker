@@ -27,6 +27,7 @@ type CmdArgs struct {
 type lockModeArgs struct {
 	SkipValidatePassphrase     bool
 	OverwriteWithGarbagePasses int
+	ForceToLock                bool
 }
 
 type unlockModeArgs struct{}
@@ -40,8 +41,9 @@ func parseLockModeArgs() (CmdArgs, error) {
 	// general args using by both lock and unlock mode
 	fs.BoolVar(&args.ProcessSubdirRecursively, "r", false, "process subdirectories recursively")
 	// lock mode args
-	fs.BoolVar(&args.LockArgs.SkipValidatePassphrase, "skip-val", false, "enable to skip validate the passphrase")
+	fs.BoolVar(&args.LockArgs.SkipValidatePassphrase, "skip-val", false, "skip validate the passphrase")
 	fs.IntVar(&args.LockArgs.OverwriteWithGarbagePasses, "overwrite", defaultOverwriteWithGarbagePasses, "set number of passes to overwrite with garbage data")
+	fs.BoolVar(&args.LockArgs.ForceToLock, "f", false, "force to lock locked files when processing directory")
 
 	fs.Parse(os.Args[subcommandPosition+1:])
 
