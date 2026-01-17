@@ -5,13 +5,11 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"Locker/internal/fileutil"
 
@@ -24,7 +22,9 @@ const (
 	IdentifierExtension     = ".locked"
 	saltSize                = 32
 	defaultGarbageBytesSize = 50 * 1024 * 1024
-	chunkForBigFileSize     = defaultGarbageBytesSize
+	chunkForNormalFile      = defaultGarbageBytesSize
+	// the encrypted chunk is nonce+encryptedData+tag (12bytes + 50MB + 16bytes)
+	chunkForEncryptedFile = 12 + chunkForNormalFile + 16
 )
 
 func driveKey(passphrase, salt []byte) []byte {
@@ -48,32 +48,11 @@ func encryptFileName(gcm cipher.AEAD, filePath string) (encryptedFileName []byte
 	return encryptedFileName, lengthInBytes
 }
 
-func encryptSmallFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
-	encryptedFileName, encryptedFileNameLength := encryptFileName(gcm, originalFilePath)
-
-	originalData, _ := os.ReadFile(originalFilePath)
-	encryptedData := encrypt(gcm, originalData)
-
+func encryptFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
 	// naming encrypted file with salt to prevent
 	// accidentally change the file name if encrypted file name is placed as file name which will fail decryption
 	// reach over 255 chars limit when naming file
 	// now the file name doesnt effect at all even if one char is changed or renamed completely
-	newFileName := hex.EncodeToString(salt) + IdentifierExtension
-	newFilePath := fileutil.GetPathToFile(originalFilePath) + newFileName
-	file, _ := os.OpenFile(newFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
-	defer file.Close()
-	writer := bufio.NewWriter(file)
-	defer writer.Flush()
-
-	writer.Write(salt)
-	writer.Write(encryptedFileNameLength)
-	writer.Write(encryptedFileName)
-	writer.Write(encryptedData)
-
-	return newFileName
-}
-
-func encryptBigFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
 	newFileName := hex.EncodeToString(salt) + IdentifierExtension
 	newFilePath := fileutil.GetPathToFile(originalFilePath) + newFileName
 
@@ -91,7 +70,7 @@ func encryptBigFile(gcm cipher.AEAD, salt []byte, originalFilePath string) strin
 	defer originalFile.Close()
 	reader := bufio.NewReader(originalFile)
 
-	chunk := make([]byte, chunkForBigFileSize)
+	chunk := make([]byte, chunkForNormalFile)
 	for {
 		n, err := reader.Read(chunk)
 		if err == io.EOF {
@@ -133,7 +112,7 @@ func overWriteWithGarbage(originalFilePath string, passes int) {
 	}
 }
 
-func Lock(passphrase, filePath string, overWriteWithGarbagePasses int) (encryptedFile string) {
+func Lock(passphrase, filePath string, overWriteWithGarbagePasses int) string {
 	salt := make([]byte, saltSize)
 	rand.Read(salt)
 
@@ -141,11 +120,7 @@ func Lock(passphrase, filePath string, overWriteWithGarbagePasses int) (encrypte
 	block, _ := aes.NewCipher(key)
 	gcm, _ := cipher.NewGCM(block)
 
-	if fileutil.IsSmallFile(filePath, false) {
-		encryptedFile = encryptSmallFile(gcm, salt, filePath)
-	} else {
-		encryptedFile = encryptBigFile(gcm, salt, filePath)
-	}
+	encryptedFile := encryptFile(gcm, salt, filePath)
 	overWriteWithGarbage(filePath, overWriteWithGarbagePasses)
 	os.Remove(filePath)
 
@@ -171,47 +146,57 @@ func decrypt(gcm cipher.AEAD, nonce, encryptedData []byte) ([]byte, error) {
 }
 
 func decryptFileName(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
-	dirpathToFile, encryptedFileName := filepath.Split(encryptedFilePath)
-	removedIdentifierFileName, _ := strings.CutSuffix(encryptedFileName, IdentifierExtension)
+	reader, _ := os.Open(encryptedFilePath)
+	defer reader.Close()
 
-	decodedFileName, err := base64.RawURLEncoding.DecodeString(removedIdentifierFileName)
+	// skip salt
+	reader.Seek(saltSize, io.SeekStart)
+
+	// get lengthInBytes of encryptedFileName
+	lengthInBytes := make([]byte, 8)
+	reader.Read(lengthInBytes)
+	intLength := binary.BigEndian.Uint64(lengthInBytes)
+
+	encryptedFileName := make([]byte, intLength)
+	reader.Read(encryptedFileName)
+
+	originalFileName, err := decrypt(gcm, encryptedFileName[:gcm.NonceSize()], encryptedFileName[gcm.NonceSize():])
 	if err != nil {
 		return "", err
 	}
 
-	originalFileName, err := decrypt(gcm, decodedFileName[:gcm.NonceSize()], decodedFileName[gcm.NonceSize():])
+	return string(originalFileName), nil
+}
+
+func decryptFile(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
+	originalFileName, err := decryptFileName(gcm, encryptedFilePath)
 	if err != nil {
 		return "", err
 	}
 
-	return dirpathToFile + string(originalFileName), nil
-}
-
-func decryptSmallFile(gcm cipher.AEAD, encryptedFilePath, originalFilePath string) {
-	encryptedFileContent, _ := os.ReadFile(encryptedFilePath)
-
-	nonce := encryptedFileContent[saltSize : saltSize+gcm.NonceSize()]
-	encryptedData := encryptedFileContent[saltSize+gcm.NonceSize():]
-	// ignore err cause if decryptFileName get the job done which means the key is valid
-	originalFileContent, _ := decrypt(gcm, nonce, encryptedData)
-
-	os.WriteFile(originalFilePath, originalFileContent, 0o644)
-}
-
-func decryptBigFile(gcm cipher.AEAD, encryptedFilePath, originalFilePath string) {
 	encryptedFile, _ := os.Open(encryptedFilePath)
-	encryptedFile.Seek(saltSize, io.SeekStart) // skip salt
 	defer encryptedFile.Close()
-	reader := bufio.NewReader(encryptedFile)
 
+	// skip salt
+	encryptedFile.Seek(saltSize, io.SeekStart)
+
+	// get lengthInBytes of encryptedFileName
+	lengthInBytes := make([]byte, 8)
+	encryptedFile.Read(lengthInBytes)
+	intLength := binary.BigEndian.Uint64(lengthInBytes)
+
+	// skip encryptedFileName
+	encryptedFile.Seek(int64(intLength), io.SeekCurrent)
+
+	originalFilePath := fileutil.GetPathToFile(encryptedFilePath) + originalFileName
 	originalFile, _ := os.OpenFile(originalFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
 	defer originalFile.Close()
 	writer := bufio.NewWriter(originalFile)
 	defer writer.Flush()
 
-	// the encrypted chunk is nonce+encryptedData+tag (12bytes + 50MB + 28bytes)
-	encryptedChunkSize := gcm.NonceSize() + chunkForBigFileSize + gcm.Overhead()
-	encryptedChunk := make([]byte, encryptedChunkSize)
+	reader := bufio.NewReader(encryptedFile)
+
+	encryptedChunk := make([]byte, chunkForEncryptedFile)
 	for {
 		n, err := reader.Read(encryptedChunk)
 		if err == io.EOF {
@@ -221,26 +206,22 @@ func decryptBigFile(gcm cipher.AEAD, encryptedFilePath, originalFilePath string)
 		originalChunk, _ := decrypt(gcm, encryptedChunk[:gcm.NonceSize()], encryptedChunk[gcm.NonceSize():n])
 		writer.Write(originalChunk)
 	}
+
+	return originalFilePath, nil
 }
 
-func Unlock(passphrase, encryptedFilePath string) string {
+func Unlock(passphrase, encryptedFilePath string) (string, bool) {
 	salt := getSaltFromEncryptedFile(encryptedFilePath)
 
 	key := driveKey([]byte(passphrase), salt)
 	block, _ := aes.NewCipher(key)
 	gcm, _ := cipher.NewGCM(block)
 
-	originalFilePath, err := decryptFileName(gcm, encryptedFilePath)
+	originalFile, err := decryptFile(gcm, encryptedFilePath)
 	if err != nil {
-		return "[-] Invalid Passphrase"
-	}
-
-	if fileutil.IsSmallFile(encryptedFilePath, true) {
-		decryptSmallFile(gcm, encryptedFilePath, originalFilePath)
-	} else {
-		decryptBigFile(gcm, encryptedFilePath, originalFilePath)
+		return "[-] Invalid passphrase", false
 	}
 	os.Remove(encryptedFilePath)
 
-	return "[+] Unlocked   " + originalFilePath
+	return originalFile, true
 }
