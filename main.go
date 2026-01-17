@@ -69,6 +69,10 @@ func main() {
 		fmt.Println("[-] Path not found")
 		return
 	}
+	if fileutil.IsRootPath(args.Path) {
+		fmt.Println("[-] Cannot process root")
+		return
+	}
 
 	fmt.Print("passphrase:")
 	passphrase := locker.GetPassphrase()

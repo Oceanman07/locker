@@ -9,6 +9,7 @@ import (
 
 const (
 	identifierExtension = ".locked"
+	rootPath            = "/"
 )
 
 func GetPathToFile(filePath string) string {
@@ -22,6 +23,11 @@ func IsExist(path string) bool {
 		return false
 	}
 	return true
+}
+
+func IsRootPath(path string) bool {
+	absolutePath, _ := filepath.Abs(path)
+	return absolutePath == rootPath
 }
 
 func IsRegularFile(path string) bool {
