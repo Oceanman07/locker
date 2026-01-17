@@ -6,6 +6,8 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,7 +22,7 @@ const (
 	LockMode                = "lock"
 	UnlockMode              = "unlock"
 	IdentifierExtension     = ".locked"
-	saltSize                = 16
+	saltSize                = 32
 	defaultGarbageBytesSize = 50 * 1024 * 1024
 	chunkForBigFileSize     = defaultGarbageBytesSize
 )
@@ -36,31 +38,58 @@ func encrypt(gcm cipher.AEAD, data []byte) []byte {
 	return append(nonce, ciphertext...)
 }
 
-func encryptFileName(gcm cipher.AEAD, filePath string) string {
-	dirpathToFile, fileName := filepath.Split(filePath)
-	encryptedFileName := encrypt(gcm, []byte(fileName))
-	return dirpathToFile + base64.RawURLEncoding.EncodeToString(encryptedFileName) + IdentifierExtension
+func encryptFileName(gcm cipher.AEAD, filePath string) (encryptedFileName []byte, lengthInBytes []byte) {
+	fileName := filepath.Base(filePath)
+	encryptedFileName = encrypt(gcm, []byte(fileName))
+
+	lengthInBytes = make([]byte, 8)
+	binary.BigEndian.PutUint64(lengthInBytes, uint64(len(encryptedFileName)))
+
+	return encryptedFileName, lengthInBytes
 }
 
-func encryptSmallFile(gcm cipher.AEAD, salt []byte, originalFilePath, encryptedFilePath string) {
+func encryptSmallFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
+	encryptedFileName, encryptedFileNameLength := encryptFileName(gcm, originalFilePath)
+
 	originalData, _ := os.ReadFile(originalFilePath)
 	encryptedData := encrypt(gcm, originalData)
-	dataToWrite := append(salt, encryptedData...)
-	os.WriteFile(encryptedFilePath, dataToWrite, 0o644)
+
+	// naming encrypted file with salt to prevent
+	// accidentally change the file name if encrypted file name is placed as file name which will fail decryption
+	// reach over 255 chars limit when naming file
+	// now the file name doesnt effect at all even if one char is changed or renamed completely
+	newFileName := hex.EncodeToString(salt) + IdentifierExtension
+	newFilePath := fileutil.GetPathToFile(originalFilePath) + newFileName
+	file, _ := os.OpenFile(newFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
+	defer file.Close()
+	writer := bufio.NewWriter(file)
+	defer writer.Flush()
+
+	writer.Write(salt)
+	writer.Write(encryptedFileNameLength)
+	writer.Write(encryptedFileName)
+	writer.Write(encryptedData)
+
+	return newFileName
 }
 
-func encrypteBigFile(gcm cipher.AEAD, salt []byte, originalFilePath, encryptedFilePath string) {
-	originalFile, _ := os.Open(originalFilePath)
-	defer originalFile.Close()
-	reader := bufio.NewReader(originalFile)
+func encryptBigFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
+	newFileName := hex.EncodeToString(salt) + IdentifierExtension
+	newFilePath := fileutil.GetPathToFile(originalFilePath) + newFileName
 
-	encryptedFile, _ := os.OpenFile(encryptedFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
+	encryptedFile, _ := os.OpenFile(newFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
 	defer encryptedFile.Close()
 	writer := bufio.NewWriter(encryptedFile)
 	defer writer.Flush()
 
-	// store salt at the beginning of the file
+	encryptedFileName, encryptedFileNameLength := encryptFileName(gcm, originalFilePath)
 	writer.Write(salt)
+	writer.Write(encryptedFileNameLength)
+	writer.Write(encryptedFileName)
+
+	originalFile, _ := os.Open(originalFilePath)
+	defer originalFile.Close()
+	reader := bufio.NewReader(originalFile)
 
 	chunk := make([]byte, chunkForBigFileSize)
 	for {
@@ -72,6 +101,8 @@ func encrypteBigFile(gcm cipher.AEAD, salt []byte, originalFilePath, encryptedFi
 		encryptedChunk := encrypt(gcm, chunk[:n])
 		writer.Write(encryptedChunk)
 	}
+
+	return newFileName
 }
 
 func overWriteWithGarbage(originalFilePath string, passes int) {
@@ -102,7 +133,7 @@ func overWriteWithGarbage(originalFilePath string, passes int) {
 	}
 }
 
-func Lock(passphrase, filePath string, overWriteWithGarbagePasses int) string {
+func Lock(passphrase, filePath string, overWriteWithGarbagePasses int) (encryptedFile string) {
 	salt := make([]byte, saltSize)
 	rand.Read(salt)
 
@@ -110,16 +141,15 @@ func Lock(passphrase, filePath string, overWriteWithGarbagePasses int) string {
 	block, _ := aes.NewCipher(key)
 	gcm, _ := cipher.NewGCM(block)
 
-	encryptedFilePath := encryptFileName(gcm, filePath)
 	if fileutil.IsSmallFile(filePath, false) {
-		encryptSmallFile(gcm, salt, filePath, encryptedFilePath)
+		encryptedFile = encryptSmallFile(gcm, salt, filePath)
 	} else {
-		encrypteBigFile(gcm, salt, filePath, encryptedFilePath)
+		encryptedFile = encryptBigFile(gcm, salt, filePath)
 	}
 	overWriteWithGarbage(filePath, overWriteWithGarbagePasses)
 	os.Remove(filePath)
 
-	return "[+] Locked   " + encryptedFilePath
+	return encryptedFile
 }
 
 func getSaltFromEncryptedFile(encryptedFilePath string) []byte {

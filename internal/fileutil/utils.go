@@ -30,6 +30,11 @@ func GetFileSize(filePath string) int {
 	return int(fileInfo.Size())
 }
 
+func GetPathToFile(filePath string) string {
+	pathToFile, _ := filepath.Split(filePath)
+	return pathToFile
+}
+
 func IsExist(path string) bool {
 	_, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
