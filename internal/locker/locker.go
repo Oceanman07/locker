@@ -96,8 +96,7 @@ func encryptFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
 	defer originalFile.Close()
 	reader := bufio.NewReader(originalFile)
 
-	preallocateBufferForDst := make([]byte, chunkForNormalFile+gcm.Overhead())
-	nonce := getNonceForGCM()
+	preallocateBufferForDst := make([]byte, 0, chunkForNormalFile+gcm.Overhead())
 
 	chunk := make([]byte, chunkForNormalFile)
 	for {
@@ -106,6 +105,7 @@ func encryptFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
 			break
 		}
 
+		nonce := getNonceForGCM()
 		encryptedChunk := gcm.Seal(preallocateBufferForDst, nonce, chunk[:n], nil)
 
 		writer.Write(nonce)
