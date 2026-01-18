@@ -10,6 +10,7 @@ import (
 )
 
 const (
+	helpFlag           = "-h"
 	positionalArgsNum  = 1 // only one file or directory path
 	subcommandPosition = 1
 	// default args value
@@ -17,6 +18,7 @@ const (
 )
 
 type CmdArgs struct {
+	Help                     bool
 	Mode                     string
 	Path                     string
 	ProcessSubdirRecursively bool
@@ -85,8 +87,8 @@ func parseUnlockArgs() (CmdArgs, error) {
 }
 
 func ParseArgs() (CmdArgs, error) {
-	if len(os.Args) < 3 {
-		return CmdArgs{}, errors.New("usage: locker [mode] [flags] [path]")
+	if len(os.Args) == 1 {
+		return CmdArgs{}, errors.New("usage: locker -h")
 	}
 
 	mode := os.Args[subcommandPosition]
@@ -95,6 +97,8 @@ func ParseArgs() (CmdArgs, error) {
 		return parseLockModeArgs()
 	case locker.UnlockMode:
 		return parseUnlockArgs()
+	case helpFlag:
+		return CmdArgs{Help: true}, nil
 	default:
 		return CmdArgs{}, fmt.Errorf("invalid mode: %s", mode)
 	}

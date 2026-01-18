@@ -65,6 +65,10 @@ func main() {
 		return
 	}
 
+	if args.Help {
+		parser.PrintHelp()
+		return
+	}
 	if !fileutil.IsExist(args.Path) {
 		fmt.Println("[-] Path not found")
 		return
