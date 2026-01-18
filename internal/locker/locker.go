@@ -7,12 +7,9 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strconv"
 
 	"Locker/internal/fileutil"
 
@@ -30,26 +27,6 @@ const (
 	// the encrypted chunk is nonce+encryptedData+tag (12bytes + 50MB + 16bytes)
 	chunkForEncryptedFile = 12 + chunkForNormalFile + 16
 )
-
-func convertBytes(size float64) string {
-	units := []string{"bytes", "KB", "MB", "GB"}
-	for _, u := range units {
-		if size < 1024 {
-			return strconv.FormatFloat(size, 'f', 2, 64) + " " + u
-		}
-		size = size / 1024
-	}
-	return ""
-}
-
-func logMemory() {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-
-	fmt.Printf(
-		"+ Alloc=%s | Sys=%s | NumGC=%d\n",
-		convertBytes(float64(m.Alloc)), convertBytes(float64(m.Sys)), m.NumGC)
-}
 
 func driveKey(passphrase, salt []byte) []byte {
 	return argon2.IDKey(passphrase, salt, 3, 64*1024, 4, 32)
@@ -82,6 +59,7 @@ func encryptFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
 	newFileName := hex.EncodeToString(salt) + IdentifierExtension
 	newFilePath := fileutil.GetPathToFile(originalFilePath) + newFileName
 
+	// write to encrypted file
 	encryptedFile, _ := os.OpenFile(newFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
 	defer encryptedFile.Close()
 	writer := bufio.NewWriter(encryptedFile)
@@ -92,10 +70,14 @@ func encryptFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
 	writer.Write(encryptedFileNameLength)
 	writer.Write(encryptedFileName)
 
+	// read from original file
 	originalFile, _ := os.Open(originalFilePath)
 	defer originalFile.Close()
 	reader := bufio.NewReader(originalFile)
 
+	// if dst argument of gcm.Seal/Open is nil, it will allocate new slice every time
+	// 100 loops -> 100 allocations
+	// -> preallocate once
 	preallocateBufferForDst := make([]byte, 0, chunkForNormalFile+gcm.Overhead())
 
 	chunk := make([]byte, chunkForNormalFile)
@@ -110,8 +92,6 @@ func encryptFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
 
 		writer.Write(nonce)
 		writer.Write(encryptedChunk)
-
-		logMemory()
 	}
 
 	return newFileName
@@ -140,8 +120,6 @@ func overWriteWithGarbage(originalFilePath string, passes int) {
 			rand.Read(randomBytes)
 			n, _ := writer.Write(randomBytes)
 			writtenBytes = writtenBytes + n
-
-			logMemory()
 		}
 		writtenPasses += 1
 	}
@@ -156,7 +134,6 @@ func Lock(passphrase, filePath string, overWriteWithGarbagePasses int) string {
 	gcm, _ := cipher.NewGCM(block)
 
 	encryptedFile := encryptFile(gcm, salt, filePath)
-	fmt.Println("==========================OverWriteWithGarbage=============================")
 	overWriteWithGarbage(filePath, overWriteWithGarbagePasses)
 	os.Remove(filePath)
 
@@ -171,14 +148,6 @@ func getSaltFromEncryptedFile(encryptedFilePath string) []byte {
 
 	file.Read(salt)
 	return salt
-}
-
-func decrypt(gcm cipher.AEAD, nonce, encryptedData []byte) ([]byte, error) {
-	originalData, err := gcm.Open(nil, nonce, encryptedData, nil)
-	if err != nil {
-		return nil, err
-	}
-	return originalData, nil
 }
 
 func decryptFileName(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
@@ -196,7 +165,8 @@ func decryptFileName(gcm cipher.AEAD, encryptedFilePath string) (string, error) 
 	encryptedFileName := make([]byte, intLength)
 	reader.Read(encryptedFileName)
 
-	originalFileName, err := decrypt(gcm, encryptedFileName[:gcm.NonceSize()], encryptedFileName[gcm.NonceSize():])
+	dst := make([]byte, 0, len(encryptedFileName)-gcm.NonceSize()-gcm.Overhead())
+	originalFileName, err := gcm.Open(dst, encryptedFileName[:gcmNoneSize], encryptedFileName[gcmNoneSize:], nil)
 	if err != nil {
 		return "", err
 	}
@@ -224,13 +194,20 @@ func decryptFile(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 	// skip encryptedFileName
 	encryptedFile.Seek(int64(intLength), io.SeekCurrent)
 
+	// write to decrypted file
 	originalFilePath := fileutil.GetPathToFile(encryptedFilePath) + originalFileName
 	originalFile, _ := os.OpenFile(originalFilePath, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0o644)
 	defer originalFile.Close()
 	writer := bufio.NewWriter(originalFile)
 	defer writer.Flush()
 
+	// read from encrypted file
 	reader := bufio.NewReader(encryptedFile)
+
+	// if dst argument of gcm.Seal/Open is nil, it will allocate new slice every time
+	// 100 loops -> 100 allocations
+	// -> preallocate once
+	preallocateBufferForDst := make([]byte, 0, chunkForNormalFile)
 
 	encryptedChunk := make([]byte, chunkForEncryptedFile)
 	for {
@@ -238,13 +215,10 @@ func decryptFile(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 		if err == io.EOF {
 			break
 		}
-
 		// ignore err here cause if file name is decrypted successfully and move to here
 		// which means the key is valid
-		originalChunk, _ := decrypt(gcm, encryptedChunk[:gcm.NonceSize()], encryptedChunk[gcm.NonceSize():n])
+		originalChunk, _ := gcm.Open(preallocateBufferForDst, encryptedChunk[:gcmNoneSize], encryptedChunk[gcmNoneSize:n], nil)
 		writer.Write(originalChunk)
-
-		logMemory()
 	}
 
 	return originalFilePath, nil
