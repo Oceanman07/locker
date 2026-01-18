@@ -7,9 +7,12 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 
 	"Locker/internal/fileutil"
 
@@ -21,26 +24,49 @@ const (
 	UnlockMode              = "unlock"
 	IdentifierExtension     = ".locked"
 	saltSize                = 32
+	gcmNoneSize             = 12
 	defaultGarbageBytesSize = 50 * 1024 * 1024
 	chunkForNormalFile      = defaultGarbageBytesSize
 	// the encrypted chunk is nonce+encryptedData+tag (12bytes + 50MB + 16bytes)
 	chunkForEncryptedFile = 12 + chunkForNormalFile + 16
 )
 
+func convertBytes(size float64) string {
+	units := []string{"bytes", "KB", "MB", "GB"}
+	for _, u := range units {
+		if size < 1024 {
+			return strconv.FormatFloat(size, 'f', 2, 64) + " " + u
+		}
+		size = size / 1024
+	}
+	return ""
+}
+
+func logMemory() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	fmt.Printf(
+		"+ Alloc=%s | Sys=%s | NumGC=%d\n",
+		convertBytes(float64(m.Alloc)), convertBytes(float64(m.Sys)), m.NumGC)
+}
+
 func driveKey(passphrase, salt []byte) []byte {
 	return argon2.IDKey(passphrase, salt, 3, 64*1024, 4, 32)
 }
 
-func encrypt(gcm cipher.AEAD, data []byte) []byte {
-	nonce := make([]byte, gcm.NonceSize())
+func getNonceForGCM() []byte {
+	nonce := make([]byte, gcmNoneSize)
 	rand.Read(nonce)
-	ciphertext := gcm.Seal(nil, nonce, data, nil)
-	return append(nonce, ciphertext...)
+	return nonce
 }
 
 func encryptFileName(gcm cipher.AEAD, filePath string) (encryptedFileName []byte, lengthInBytes []byte) {
 	fileName := filepath.Base(filePath)
-	encryptedFileName = encrypt(gcm, []byte(fileName))
+
+	nonce := getNonceForGCM()
+	ciphertext := gcm.Seal(nil, nonce, []byte(fileName), nil)
+	encryptedFileName = append(nonce, ciphertext...)
 
 	lengthInBytes = make([]byte, 8)
 	binary.BigEndian.PutUint64(lengthInBytes, uint64(len(encryptedFileName)))
@@ -70,6 +96,9 @@ func encryptFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
 	defer originalFile.Close()
 	reader := bufio.NewReader(originalFile)
 
+	preallocateBufferForDst := make([]byte, chunkForNormalFile+gcm.Overhead())
+	nonce := getNonceForGCM()
+
 	chunk := make([]byte, chunkForNormalFile)
 	for {
 		n, err := reader.Read(chunk)
@@ -77,8 +106,12 @@ func encryptFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
 			break
 		}
 
-		encryptedChunk := encrypt(gcm, chunk[:n])
+		encryptedChunk := gcm.Seal(preallocateBufferForDst, nonce, chunk[:n], nil)
+
+		writer.Write(nonce)
 		writer.Write(encryptedChunk)
+
+		logMemory()
 	}
 
 	return newFileName
@@ -107,6 +140,8 @@ func overWriteWithGarbage(originalFilePath string, passes int) {
 			rand.Read(randomBytes)
 			n, _ := writer.Write(randomBytes)
 			writtenBytes = writtenBytes + n
+
+			logMemory()
 		}
 		writtenPasses += 1
 	}
@@ -121,6 +156,7 @@ func Lock(passphrase, filePath string, overWriteWithGarbagePasses int) string {
 	gcm, _ := cipher.NewGCM(block)
 
 	encryptedFile := encryptFile(gcm, salt, filePath)
+	fmt.Println("==========================OverWriteWithGarbage=============================")
 	overWriteWithGarbage(filePath, overWriteWithGarbagePasses)
 	os.Remove(filePath)
 
@@ -203,8 +239,12 @@ func decryptFile(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 			break
 		}
 
+		// ignore err here cause if file name is decrypted successfully and move to here
+		// which means the key is valid
 		originalChunk, _ := decrypt(gcm, encryptedChunk[:gcm.NonceSize()], encryptedChunk[gcm.NonceSize():n])
 		writer.Write(originalChunk)
+
+		logMemory()
 	}
 
 	return originalFilePath, nil
