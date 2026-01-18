@@ -30,7 +30,9 @@ type lockModeArgs struct {
 	ForceToLock                bool
 }
 
-type unlockModeArgs struct{}
+type unlockModeArgs struct {
+	KeepAfterUnlock bool
+}
 
 func parseLockModeArgs() (CmdArgs, error) {
 	var args CmdArgs
@@ -63,6 +65,8 @@ func parseUnlockArgs() (CmdArgs, error) {
 	args.Mode = locker.UnlockMode
 
 	fs := flag.NewFlagSet(locker.UnlockMode, flag.ContinueOnError)
+
+	fs.BoolVar(&args.UnlockArgs.KeepAfterUnlock, "keep", false, "keep the locked file after unlocking")
 
 	// general args using by both lock and unlock mode
 	fs.BoolVar(&args.ProcessSubdirRecursively, "r", false, "process subdirectories recursively")

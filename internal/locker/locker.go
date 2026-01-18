@@ -224,7 +224,7 @@ func decryptFile(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 	return originalFilePath, nil
 }
 
-func Unlock(passphrase, encryptedFilePath string) (string, bool) {
+func Unlock(passphrase, encryptedFilePath string, keepAfterUnlock bool) (string, bool) {
 	salt := getSaltFromEncryptedFile(encryptedFilePath)
 
 	key := driveKey([]byte(passphrase), salt)
@@ -235,7 +235,10 @@ func Unlock(passphrase, encryptedFilePath string) (string, bool) {
 	if err != nil {
 		return "[-] Invalid passphrase", false
 	}
-	os.Remove(encryptedFilePath)
+
+	if !keepAfterUnlock {
+		os.Remove(encryptedFilePath)
+	}
 
 	return originalFile, true
 }
