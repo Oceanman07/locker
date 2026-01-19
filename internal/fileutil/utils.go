@@ -2,6 +2,8 @@ package fileutil
 
 import (
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,6 +38,27 @@ func IsRegularFile(path string) bool {
 		return false
 	}
 	return true
+}
+
+func IsTextFile(filePath string) bool {
+	file, _ := os.Open(filePath)
+	defer file.Close()
+
+	// get the first 1024 bytes to test
+	buffer := make([]byte, 1024)
+	n, _ := file.Read(buffer)
+	buffer = buffer[:n]
+
+	// if the text file is too small, http.DetectContentType will not be able to detect
+	tempBuf := make([]byte, 1024)
+	for len(buffer) < 1024 {
+		file.Seek(0, io.SeekStart)
+		num, _ := file.Read(tempBuf)
+		buffer = append(buffer, tempBuf[:num]...)
+	}
+
+	fileType := http.DetectContentType(buffer)
+	return strings.HasPrefix(fileType, "text")
 }
 
 func ListDir(rootDir string, isRecursive bool) []string {

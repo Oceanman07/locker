@@ -10,14 +10,18 @@ import (
 
 func processLocking(args parser.CmdArgs, passphrase string) {
 	if fileutil.IsRegularFile(args.Path) {
-		result := locker.Lock(
+		result, err := locker.Lock(
 			passphrase,
 			args.Path,
 			args.LockArgs.OverwriteWithGarbagePasses,
 			args.LockArgs.KeepAfterLock,
 			args.LockArgs.LockAsText,
 		)
-		fmt.Println("[+] Locked  ", result)
+		if err != nil {
+			fmt.Println(err.Error())
+		} else {
+			fmt.Println("[+] Locked  ", result)
+		}
 
 	} else {
 		filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
@@ -33,14 +37,18 @@ func processLocking(args parser.CmdArgs, passphrase string) {
 		var count int
 		for _, path := range normalFiles {
 			count += 1
-			result := locker.Lock(
+			result, err := locker.Lock(
 				passphrase,
 				path,
 				args.LockArgs.OverwriteWithGarbagePasses,
 				args.LockArgs.KeepAfterLock,
 				args.LockArgs.LockAsText,
 			)
-			fmt.Printf("[%d/%d] Locked   %s\n", count, total, result)
+			if err != nil {
+				fmt.Println(err.Error())
+			} else {
+				fmt.Printf("[%d/%d] Locked   %s\n", count, total, result)
+			}
 		}
 	}
 }

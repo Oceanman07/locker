@@ -98,7 +98,11 @@ func encryptToNewFile(gcm cipher.AEAD, salt []byte, originalFilePath string) str
 	return newFileName
 }
 
-func encryptToText(gcm cipher.AEAD, originalFilePath string) string {
+func encryptToText(gcm cipher.AEAD, originalFilePath string) (string, error) {
+	if !fileutil.IsTextFile(originalFilePath) {
+		return "", errors.New("[-] Not a text file")
+	}
+
 	// text content for printing to the console
 	var result string
 
@@ -123,7 +127,7 @@ func encryptToText(gcm cipher.AEAD, originalFilePath string) string {
 		result = result + hex.EncodeToString(encryptedChunk)
 	}
 
-	return "\n" + result
+	return "\n" + result, nil
 }
 
 func overWriteWithGarbage(originalFilePath string, passes int) {
@@ -154,7 +158,7 @@ func overWriteWithGarbage(originalFilePath string, passes int) {
 	}
 }
 
-func Lock(passphrase, filePath string, overWriteWithGarbagePasses int, keepAfterLock, lockAsText bool) string {
+func Lock(passphrase, filePath string, overWriteWithGarbagePasses int, keepAfterLock, lockAsText bool) (string, error) {
 	salt := make([]byte, saltSize)
 	rand.Read(salt)
 
@@ -164,7 +168,10 @@ func Lock(passphrase, filePath string, overWriteWithGarbagePasses int, keepAfter
 
 	var result string
 	if lockAsText {
-		encryptedFile := encryptToText(gcm, filePath)
+		encryptedFile, err := encryptToText(gcm, filePath)
+		if err != nil {
+			return "", err
+		}
 		result = encryptedFile
 	} else {
 		encryptedFile := encryptToNewFile(gcm, salt, filePath)
@@ -178,7 +185,7 @@ func Lock(passphrase, filePath string, overWriteWithGarbagePasses int, keepAfter
 		}
 	}
 
-	return result
+	return result, nil
 }
 
 func getSaltFromEncryptedFile(encryptedFilePath string) []byte {
