@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -315,7 +316,7 @@ func decryptToText(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 	return result, nil
 }
 
-func Unlock(passphrase, encryptedFilePath string, keepAfterUnlock, unlockAsText bool) (string, bool) {
+func Unlock(passphrase, encryptedFilePath string, keepAfterUnlock, unlockAsText bool) (string, error) {
 	salt := getSaltFromEncryptedFile(encryptedFilePath)
 
 	key := driveKey([]byte(passphrase), salt)
@@ -326,14 +327,14 @@ func Unlock(passphrase, encryptedFilePath string, keepAfterUnlock, unlockAsText 
 	if unlockAsText {
 		originalFile, err := decryptToText(gcm, encryptedFilePath)
 		if err != nil {
-			return "[-] Invalid passphrase", false
+			return "", errors.New("[-] Invalid passphrase")
 		}
 		result = originalFile
 
 	} else {
 		originalFile, err := decryptToNewFile(gcm, encryptedFilePath)
 		if err != nil {
-			return "[-] Invalid passphrase", false
+			return "", errors.New("[-] Invalid passphrase")
 		}
 		result = originalFile
 	}
@@ -344,5 +345,5 @@ func Unlock(passphrase, encryptedFilePath string, keepAfterUnlock, unlockAsText 
 		}
 	}
 
-	return result, true
+	return result, nil
 }

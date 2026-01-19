@@ -47,15 +47,14 @@ func processLocking(args parser.CmdArgs, passphrase string) {
 
 func processUnlocking(args parser.CmdArgs, passphrase string) {
 	if fileutil.IsRegularFile(args.Path) {
-		result, ok := locker.Unlock(
+		result, err := locker.Unlock(
 			passphrase,
 			args.Path,
 			args.UnlockArgs.KeepAfterUnlock,
 			args.UnlockArgs.UnlockAsText,
 		)
-
-		if ok {
-			fmt.Println("[+] Unlock  ", result)
+		if err != nil {
+			fmt.Println(err.Error())
 		} else {
 			fmt.Println(result)
 		}
@@ -67,18 +66,16 @@ func processUnlocking(args parser.CmdArgs, passphrase string) {
 		total := len(encryptedFiles)
 		var count int
 		for _, path := range encryptedFiles {
-			result, ok := locker.Unlock(
+			result, err := locker.Unlock(
 				passphrase,
 				path,
 				args.UnlockArgs.KeepAfterUnlock,
 				args.UnlockArgs.UnlockAsText,
 			)
-
-			if ok {
-				count += 1
-				fmt.Printf("[%d/%d] Unlock   %s\n", count, total, result)
+			if err != nil {
+				fmt.Println(err.Error())
 			} else {
-				fmt.Println(result)
+				fmt.Printf("[%d/%d] Unlock   %s\n", count, total, result)
 			}
 		}
 	}
