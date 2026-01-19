@@ -23,4 +23,6 @@ func PrintHelp() {
 	fmt.Println()
 	fmt.Println("unlock mode options:")
 	fmt.Println("  --keep           keep the locked file after unlocking")
+	fmt.Println("  --text           unlock file content and print to the console instead")
+	fmt.Println("                   of writing to a new file and keep the locked file;")
 }

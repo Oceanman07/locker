@@ -174,7 +174,7 @@ func decryptFileName(gcm cipher.AEAD, encryptedFilePath string) (string, error) 
 	return string(originalFileName), nil
 }
 
-func decryptFile(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
+func decryptToNewFile(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 	originalFileName, err := decryptFileName(gcm, encryptedFilePath)
 	if err != nil {
 		return "", err
@@ -224,21 +224,85 @@ func decryptFile(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 	return originalFilePath, nil
 }
 
-func Unlock(passphrase, encryptedFilePath string, keepAfterUnlock bool) (string, bool) {
+// This is helpful for file like passwords.txt
+// instead of unlocking the secret file then locking again
+// this allows to unlock file content then print to the consloe
+// while keeping the locked secret file
+func decryptToText(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
+	originalFileName, err := decryptFileName(gcm, encryptedFilePath)
+	if err != nil {
+		return "", err
+	}
+
+	encryptedFile, _ := os.Open(encryptedFilePath)
+	defer encryptedFile.Close()
+
+	// skip salt
+	encryptedFile.Seek(saltSize, io.SeekStart)
+
+	// get lengthInBytes of encryptedFileName
+	lengthInBytes := make([]byte, 8)
+	encryptedFile.Read(lengthInBytes)
+	intLength := binary.BigEndian.Uint64(lengthInBytes)
+
+	// skip encryptedFileName
+	encryptedFile.Seek(int64(intLength), io.SeekCurrent)
+
+	// read from encrypted file
+	reader := bufio.NewReader(encryptedFile)
+
+	// text content for printing to the console
+	var result string
+
+	// if dst argument of gcm.Seal/Open is nil, it will allocate new slice every time
+	// 100 loops -> 100 allocations
+	// -> preallocate once
+	preallocateBufferForDst := make([]byte, 0, chunkForNormalFile)
+
+	encryptedChunk := make([]byte, chunkForEncryptedFile)
+	for {
+		n, err := reader.Read(encryptedChunk)
+		if err == io.EOF {
+			break
+		}
+		// ignore err here cause if file name is decrypted successfully and move to here
+		// which means the key is valid
+		originalChunk, _ := gcm.Open(preallocateBufferForDst, encryptedChunk[:gcmNoneSize], encryptedChunk[gcmNoneSize:n], nil)
+		result = result + string(originalChunk)
+	}
+	result = "\n" + result + "\n----------\n" + "from file: " + originalFileName
+
+	return result, nil
+}
+
+func Unlock(passphrase, encryptedFilePath string, keepAfterUnlock, unlockAsText bool) (string, bool) {
 	salt := getSaltFromEncryptedFile(encryptedFilePath)
 
 	key := driveKey([]byte(passphrase), salt)
 	block, _ := aes.NewCipher(key)
 	gcm, _ := cipher.NewGCM(block)
 
-	originalFile, err := decryptFile(gcm, encryptedFilePath)
-	if err != nil {
-		return "[-] Invalid passphrase", false
+	var result string
+	if unlockAsText {
+		originalFile, err := decryptToText(gcm, encryptedFilePath)
+		if err != nil {
+			return "[-] Invalid passphrase", false
+		}
+		result = originalFile
+
+	} else {
+		originalFile, err := decryptToNewFile(gcm, encryptedFilePath)
+		if err != nil {
+			return "[-] Invalid passphrase", false
+		}
+		result = originalFile
 	}
 
 	if !keepAfterUnlock {
-		os.Remove(encryptedFilePath)
+		if !unlockAsText {
+			os.Remove(encryptedFilePath)
+		}
 	}
 
-	return originalFile, true
+	return result, true
 }
