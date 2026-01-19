@@ -89,11 +89,11 @@ func main() {
 				return
 			}
 		}
-
 		// reconfirm passphrase
 		fmt.Print("confirm: ")
 		confirmPassphrase := locker.GetPassphrase()
 		if confirmPassphrase != passphrase {
+			fmt.Println()
 			fmt.Println("[-] Passphrases didn't match")
 			return
 		}
