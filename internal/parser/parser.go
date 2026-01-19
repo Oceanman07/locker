@@ -30,6 +30,8 @@ type lockModeArgs struct {
 	SkipValidatePassphrase     bool
 	OverwriteWithGarbagePasses int
 	ForceToLock                bool
+	KeepAfterLock              bool
+	LockAsText                 bool
 }
 
 type unlockModeArgs struct {
@@ -49,6 +51,8 @@ func parseLockModeArgs() (CmdArgs, error) {
 	fs.BoolVar(&args.LockArgs.SkipValidatePassphrase, "skip-val", false, "skip validate the passphrase")
 	fs.IntVar(&args.LockArgs.OverwriteWithGarbagePasses, "overwrite", defaultOverwriteWithGarbagePasses, "set number of passes to overwrite with garbage data")
 	fs.BoolVar(&args.LockArgs.ForceToLock, "f", false, "force to lock locked files when processing directory")
+	fs.BoolVar(&args.LockArgs.KeepAfterLock, "keep", false, "keep the original file after locking")
+	fs.BoolVar(&args.LockArgs.LockAsText, "text", false, "print encrypted file content to the console as hex")
 
 	fs.Parse(os.Args[subcommandPosition+1:])
 

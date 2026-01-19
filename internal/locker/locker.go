@@ -51,7 +51,7 @@ func encryptFileName(gcm cipher.AEAD, filePath string) (encryptedFileName []byte
 	return encryptedFileName, lengthInBytes
 }
 
-func encryptFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
+func encryptToNewFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
 	// naming encrypted file with salt to prevent
 	// accidentally change the file name if encrypted file name is placed as file name which will fail decryption
 	// reach over 255 chars limit when naming file
@@ -97,6 +97,34 @@ func encryptFile(gcm cipher.AEAD, salt []byte, originalFilePath string) string {
 	return newFileName
 }
 
+func encryptToText(gcm cipher.AEAD, originalFilePath string) string {
+	// text content for printing to the console
+	var result string
+
+	originalFile, _ := os.Open(originalFilePath)
+	defer originalFile.Close()
+	reader := bufio.NewReader(originalFile)
+
+	// if dst argument of gcm.Seal/Open is nil, it will allocate new slice every time
+	// 100 loops -> 100 allocations
+	// -> preallocate once
+	preallocateBufferForDst := make([]byte, 0, chunkForNormalFile+gcm.Overhead())
+
+	chunk := make([]byte, chunkForNormalFile)
+	for {
+		n, err := reader.Read(chunk)
+		if err == io.EOF {
+			break
+		}
+
+		nonce := getNonceForGCM()
+		encryptedChunk := gcm.Seal(preallocateBufferForDst, nonce, chunk[:n], nil)
+		result = result + hex.EncodeToString(encryptedChunk)
+	}
+
+	return "\n" + result
+}
+
 func overWriteWithGarbage(originalFilePath string, passes int) {
 	randomBytes := make([]byte, defaultGarbageBytesSize)
 	fileInfo, _ := os.Stat(originalFilePath)
@@ -125,7 +153,7 @@ func overWriteWithGarbage(originalFilePath string, passes int) {
 	}
 }
 
-func Lock(passphrase, filePath string, overWriteWithGarbagePasses int) string {
+func Lock(passphrase, filePath string, overWriteWithGarbagePasses int, keepAfterLock, lockAsText bool) string {
 	salt := make([]byte, saltSize)
 	rand.Read(salt)
 
@@ -133,11 +161,23 @@ func Lock(passphrase, filePath string, overWriteWithGarbagePasses int) string {
 	block, _ := aes.NewCipher(key)
 	gcm, _ := cipher.NewGCM(block)
 
-	encryptedFile := encryptFile(gcm, salt, filePath)
-	overWriteWithGarbage(filePath, overWriteWithGarbagePasses)
-	os.Remove(filePath)
+	var result string
+	if lockAsText {
+		encryptedFile := encryptToText(gcm, filePath)
+		result = encryptedFile
+	} else {
+		encryptedFile := encryptToNewFile(gcm, salt, filePath)
+		result = encryptedFile
+	}
 
-	return encryptedFile
+	if !keepAfterLock {
+		if !lockAsText {
+			overWriteWithGarbage(filePath, overWriteWithGarbagePasses)
+			os.Remove(filePath)
+		}
+	}
+
+	return result
 }
 
 func getSaltFromEncryptedFile(encryptedFilePath string) []byte {
@@ -234,6 +274,9 @@ func decryptToText(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 		return "", err
 	}
 
+	// text content for printing to the console
+	var result string
+
 	encryptedFile, _ := os.Open(encryptedFilePath)
 	defer encryptedFile.Close()
 
@@ -250,9 +293,6 @@ func decryptToText(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 
 	// read from encrypted file
 	reader := bufio.NewReader(encryptedFile)
-
-	// text content for printing to the console
-	var result string
 
 	// if dst argument of gcm.Seal/Open is nil, it will allocate new slice every time
 	// 100 loops -> 100 allocations
