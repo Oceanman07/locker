@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -225,7 +226,7 @@ func decryptFileName(gcm cipher.AEAD, encryptedFilePath string) (string, error) 
 func decryptToNewFile(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 	originalFileName, err := decryptFileName(gcm, encryptedFilePath)
 	if err != nil {
-		return "", err
+		return "", errors.New("[-] Invalid passphrase")
 	}
 
 	encryptedFile, _ := os.Open(encryptedFilePath)
@@ -279,7 +280,7 @@ func decryptToNewFile(gcm cipher.AEAD, encryptedFilePath string) (string, error)
 func decryptToText(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 	originalFileName, err := decryptFileName(gcm, encryptedFilePath)
 	if err != nil {
-		return "", err
+		return "", errors.New("[-] Invalid passphrase")
 	}
 
 	// text content for printing to the console
@@ -308,6 +309,7 @@ func decryptToText(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 	preallocateBufferForDst := make([]byte, 0, chunkForNormalFile)
 
 	encryptedChunk := make([]byte, chunkForEncryptedFile)
+	bufSizeForTesting := 1024
 	for {
 		n, err := reader.Read(encryptedChunk)
 		if err == io.EOF {
@@ -316,6 +318,16 @@ func decryptToText(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 		// ignore err here cause if file name is decrypted successfully and move to here
 		// which means the key is valid
 		originalChunk, _ := gcm.Open(preallocateBufferForDst, encryptedChunk[:gcmNoneSize], encryptedChunk[gcmNoneSize:n], nil)
+
+		// take the first 1024 bytes for testing
+		// n is the read encrypted chunk which includes 12 bytes nonce and 16 bytes tag
+		if n-12-16 < 1024 {
+			bufSizeForTesting = n - 12 - 16
+		}
+		if !fileutil.IsTextContent(originalChunk[:bufSizeForTesting]) {
+			return "", errors.New("[-] The original file is not a text file")
+		}
+
 		result = result + string(originalChunk)
 	}
 	result = "\n" + result + "\n----------\n" + "from file: " + originalFileName
@@ -334,14 +346,14 @@ func Unlock(passphrase, encryptedFilePath string, keepAfterUnlock, unlockAsText 
 	if unlockAsText {
 		originalFile, err := decryptToText(gcm, encryptedFilePath)
 		if err != nil {
-			return "", errors.New("[-] Invalid passphrase")
+			return "", err
 		}
 		result = originalFile
 
 	} else {
 		originalFile, err := decryptToNewFile(gcm, encryptedFilePath)
 		if err != nil {
-			return "", errors.New("[-] Invalid passphrase")
+			return "", err
 		}
 		result = originalFile
 	}

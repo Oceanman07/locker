@@ -2,6 +2,7 @@ package fileutil
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -12,6 +13,7 @@ import (
 const (
 	identifierExtension = ".locked"
 	rootPath            = "/"
+	textType            = "text"
 )
 
 func GetPathToFile(filePath string) string {
@@ -58,7 +60,21 @@ func IsTextFile(filePath string) bool {
 	}
 
 	fileType := http.DetectContentType(buffer)
-	return strings.HasPrefix(fileType, "text")
+	return strings.HasPrefix(fileType, textType)
+}
+
+func IsTextContent(buf []byte) bool {
+	// avoid to change the external state buf
+	tempBuf := make([]byte, len(buf))
+	copy(tempBuf, buf)
+
+	// if the buffer is too small, http.DetectContentType will not be able to detect
+	for len(tempBuf) < 1024 {
+		tempBuf = append(tempBuf, tempBuf...)
+	}
+
+	fileType := http.DetectContentType(tempBuf)
+	return strings.HasPrefix(fileType, textType)
 }
 
 func ListDir(rootDir string, isRecursive bool) []string {
