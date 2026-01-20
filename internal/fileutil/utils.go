@@ -2,8 +2,6 @@ package fileutil
 
 import (
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -46,34 +44,16 @@ func IsTextFile(filePath string) bool {
 	file, _ := os.Open(filePath)
 	defer file.Close()
 
-	// get the first 1024 bytes to test
 	buffer := make([]byte, 1024)
 	n, _ := file.Read(buffer)
 	buffer = buffer[:n]
-
-	// if the text file is too small, http.DetectContentType will not be able to detect
-	tempBuf := make([]byte, 1024)
-	for len(buffer) < 1024 {
-		file.Seek(0, io.SeekStart)
-		num, _ := file.Read(tempBuf)
-		buffer = append(buffer, tempBuf[:num]...)
-	}
 
 	fileType := http.DetectContentType(buffer)
 	return strings.HasPrefix(fileType, textType)
 }
 
-func IsTextContent(buf []byte) bool {
-	// avoid to change the external state buf
-	tempBuf := make([]byte, len(buf))
-	copy(tempBuf, buf)
-
-	// if the buffer is too small, http.DetectContentType will not be able to detect
-	for len(tempBuf) < 1024 {
-		tempBuf = append(tempBuf, tempBuf...)
-	}
-
-	fileType := http.DetectContentType(tempBuf)
+func IsTextContent(buffer []byte) bool {
+	fileType := http.DetectContentType(buffer)
 	return strings.HasPrefix(fileType, textType)
 }
 

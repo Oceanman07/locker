@@ -64,7 +64,7 @@ func processUnlocking(args parser.CmdArgs, passphrase string) {
 		if err != nil {
 			fmt.Println(err.Error())
 		} else {
-			fmt.Println(result)
+			fmt.Println("[+] Unlocked  ", result)
 		}
 
 	} else {
