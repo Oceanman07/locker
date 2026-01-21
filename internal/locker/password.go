@@ -38,6 +38,18 @@ func hasUppercase(passphrase string) bool {
 	return false
 }
 
+func hasSpecialChar(passphrase string) bool {
+	specialChars := "/()_-+*&^%$#@!:.?[]|~;="
+	for _, specialChar := range specialChars {
+		for _, char := range passphrase {
+			if char == specialChar {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func IsValidPassphrase(passphrase string) bool {
 	if !hasOneNumber(passphrase) {
 		return false
@@ -46,6 +58,9 @@ func IsValidPassphrase(passphrase string) bool {
 		return false
 	}
 	if !hasUppercase(passphrase) {
+		return false
+	}
+	if !hasSpecialChar(passphrase) {
 		return false
 	}
 	return true
