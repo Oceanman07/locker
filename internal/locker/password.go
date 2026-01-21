@@ -2,9 +2,12 @@ package locker
 
 import (
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 )
+
+const mininalLength = 4
 
 func GetPassphrase() string {
 	passphrase, _ := term.ReadPassword(0)
@@ -50,7 +53,14 @@ func hasSpecialChar(passphrase string) bool {
 	return false
 }
 
+func isValidLength(passphrase string) bool {
+	return utf8.RuneCountInString(passphrase) >= mininalLength
+}
+
 func IsValidPassphrase(passphrase string) bool {
+	if !isValidLength(passphrase) {
+		return false
+	}
 	if !hasOneNumber(passphrase) {
 		return false
 	}

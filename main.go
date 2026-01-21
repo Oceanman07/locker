@@ -116,7 +116,7 @@ func main() {
 	if args.Mode == locker.LockMode {
 		if !args.LockArgs.SkipValidatePassphrase {
 			if !locker.IsValidPassphrase(passphrase) {
-				fmt.Println("[-] Passphrase must contain at least lowercase, uppercase, 1 number and 1 special char `/()_-+*&^%$#@!:.?[]|~;=`")
+				fmt.Println("[-] Passphrase must contain at least 4 chars, lowercase, uppercase, 1 number and 1 special char `/()_-+*&^%$#@!:.?[]|~;=`")
 				return
 			}
 		}
