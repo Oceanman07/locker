@@ -36,7 +36,6 @@ func processLocking(args parser.CmdArgs, passphrase string) {
 		total := len(normalFiles)
 		var count int
 		for _, path := range normalFiles {
-			count += 1
 			result, err := locker.Lock(
 				passphrase,
 				path,
@@ -47,6 +46,7 @@ func processLocking(args parser.CmdArgs, passphrase string) {
 			if err != nil {
 				fmt.Println(err.Error())
 			} else {
+				count++
 				fmt.Printf("[%d/%d] Locked   %s\n", count, total, result)
 			}
 		}
@@ -83,6 +83,7 @@ func processUnlocking(args parser.CmdArgs, passphrase string) {
 			if err != nil {
 				fmt.Println(err.Error())
 			} else {
+				count++
 				fmt.Printf("[%d/%d] Unlock   %s\n", count, total, result)
 			}
 		}
