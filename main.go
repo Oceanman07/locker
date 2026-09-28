@@ -8,11 +8,37 @@ import (
 	"Locker/internal/parser"
 )
 
-func processLocking(args parser.CmdArgs, passphrase string) {
-	if fileutil.IsRegularFile(args.Path) {
+func lockRegularFile(args parser.CmdArgs, passphrase string) {
+	result, err := locker.Lock(
+		passphrase,
+		args.Path,
+		args.LockArgs.OverwriteWithGarbagePasses,
+		args.LockArgs.KeepAfterLock,
+		args.LockArgs.LockAsText,
+	)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	fmt.Println("[+] Locked  ", result)
+}
+
+func lockDirectory(args parser.CmdArgs, passphrase string) {
+	filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
+
+	var normalFiles []string
+	if args.LockArgs.ForceToLock {
+		normalFiles = filePaths
+	} else {
+		normalFiles = fileutil.FilterFiles(filePaths, false)
+	}
+
+	total := len(normalFiles)
+	var count int
+	for _, path := range normalFiles {
 		result, err := locker.Lock(
 			passphrase,
-			args.Path,
+			path,
 			args.LockArgs.OverwriteWithGarbagePasses,
 			args.LockArgs.KeepAfterLock,
 			args.LockArgs.LockAsText,
@@ -20,35 +46,8 @@ func processLocking(args parser.CmdArgs, passphrase string) {
 		if err != nil {
 			fmt.Println(err.Error())
 		} else {
-			fmt.Println("[+] Locked  ", result)
-		}
-
-	} else {
-		filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
-
-		var normalFiles []string
-		if args.LockArgs.ForceToLock {
-			normalFiles = filePaths
-		} else {
-			normalFiles = fileutil.FilterFiles(filePaths, false)
-		}
-
-		total := len(normalFiles)
-		var count int
-		for _, path := range normalFiles {
-			result, err := locker.Lock(
-				passphrase,
-				path,
-				args.LockArgs.OverwriteWithGarbagePasses,
-				args.LockArgs.KeepAfterLock,
-				args.LockArgs.LockAsText,
-			)
-			if err != nil {
-				fmt.Println(err.Error())
-			} else {
-				count++
-				fmt.Printf("[%d/%d] Locked   %s\n", count, total, result)
-			}
+			count++
+			fmt.Printf("[%d/%d] Locked   %s\n", count, total, result)
 		}
 	}
 }
@@ -131,7 +130,11 @@ func main() {
 		}
 		fmt.Println()
 
-		processLocking(args, passphrase)
+		if fileutil.IsRegularFile(args.Path) {
+			lockRegularFile(args, passphrase)
+		} else {
+			lockDirectory(args, passphrase)
+		}
 
 	} else if args.Mode == locker.UnlockMode {
 		processUnlocking(args, passphrase)
