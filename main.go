@@ -59,7 +59,7 @@ func lockDirectory(args parser.CmdArgs, passphrase string) {
 				fmt.Println(err.Error())
 			} else {
 				counter.Add(1)
-				fmt.Printf("[%d/%d] %s\n", counter.Load(), total, result)
+				fmt.Printf("[%d/%d] Locked   %s\n", counter.Load(), total, result)
 			}
 
 			// release to let the next gorountine join the semaphore
@@ -86,25 +86,39 @@ func unlockRegularFile(args parser.CmdArgs, passphrase string) {
 }
 
 func unlockDirectory(args parser.CmdArgs, passphrase string) {
+	semaphore := make(chan struct{}, 5)
+	var wg sync.WaitGroup
+
 	filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
 	encryptedFiles := fileutil.FilterFiles(filePaths, true)
 
 	total := len(encryptedFiles)
-	var count int
+	var counter atomic.Int64
 	for _, path := range encryptedFiles {
-		result, err := locker.Unlock(
-			passphrase,
-			path,
-			args.UnlockArgs.KeepAfterUnlock,
-			args.UnlockArgs.UnlockAsText,
-		)
-		if err != nil {
-			fmt.Println(err.Error())
-		} else {
-			count++
-			fmt.Printf("[%d/%d] Unlock   %s\n", count, total, result)
-		}
+		wg.Add(1)
+
+		go func() {
+			semaphore <- struct{}{}
+
+			result, err := locker.Unlock(
+				passphrase,
+				path,
+				args.UnlockArgs.KeepAfterUnlock,
+				args.UnlockArgs.UnlockAsText,
+			)
+			if err != nil {
+				fmt.Println(err.Error())
+			} else {
+				counter.Add(1)
+				fmt.Printf("[%d/%d] Unlock   %s\n", counter.Load(), total, result)
+			}
+
+			<-semaphore
+			wg.Done()
+		}()
 	}
+
+	wg.Wait()
 }
 
 func main() {
