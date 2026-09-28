@@ -27,7 +27,7 @@ func lockRegularFile(args parser.CmdArgs, passphrase string) {
 
 func lockDirectory(args parser.CmdArgs, passphrase string) {
 	// lock 5 files at the same time
-	semaphore := make(chan struct{}, 5)
+	semaphore := make(chan struct{}, args.Concurrency)
 	var wg sync.WaitGroup
 
 	filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
@@ -86,7 +86,7 @@ func unlockRegularFile(args parser.CmdArgs, passphrase string) {
 }
 
 func unlockDirectory(args parser.CmdArgs, passphrase string) {
-	semaphore := make(chan struct{}, 5)
+	semaphore := make(chan struct{}, args.Concurrency)
 	var wg sync.WaitGroup
 
 	filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)

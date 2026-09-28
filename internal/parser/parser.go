@@ -15,6 +15,7 @@ const (
 	subcommandPosition = 1
 	// default args value
 	defaultOverwriteWithGarbagePasses = 1
+	defaultConcurrency                = 7
 )
 
 type CmdArgs struct {
@@ -22,6 +23,7 @@ type CmdArgs struct {
 	Mode                     string
 	Path                     string
 	ProcessSubdirRecursively bool
+	Concurrency              int
 	LockArgs                 lockModeArgs
 	UnlockArgs               unlockModeArgs
 }
@@ -47,6 +49,7 @@ func parseLockModeArgs() (CmdArgs, error) {
 
 	// general args using by both lock and unlock mode
 	fs.BoolVar(&args.ProcessSubdirRecursively, "r", false, "process subdirectories recursively")
+	fs.IntVar(&args.Concurrency, "con", defaultConcurrency, "maximum number of concurrency locking/unlocking tasks")
 	// lock mode args
 	fs.BoolVar(&args.LockArgs.SkipValidatePassphrase, "skip-val", false, "skip validate the passphrase")
 	fs.IntVar(&args.LockArgs.OverwriteWithGarbagePasses, "overwrite", defaultOverwriteWithGarbagePasses, "set number of passes to overwrite with garbage data")
@@ -73,11 +76,12 @@ func parseUnlockArgs() (CmdArgs, error) {
 
 	fs := flag.NewFlagSet(locker.UnlockMode, flag.ContinueOnError)
 
-	fs.BoolVar(&args.UnlockArgs.KeepAfterUnlock, "keep", false, "keep the locked file after unlocking")
-	fs.BoolVar(&args.UnlockArgs.UnlockAsText, "text", false, "just show the file content not write to a new file")
-
 	// general args using by both lock and unlock mode
 	fs.BoolVar(&args.ProcessSubdirRecursively, "r", false, "process subdirectories recursively")
+	fs.IntVar(&args.Concurrency, "con", defaultConcurrency, "maximum number of concurrency locking/unlocking tasks")
+	// unlock mode args
+	fs.BoolVar(&args.UnlockArgs.KeepAfterUnlock, "keep", false, "keep the locked file after unlocking")
+	fs.BoolVar(&args.UnlockArgs.UnlockAsText, "text", false, "just show the file content not write to a new file")
 
 	fs.Parse(os.Args[subcommandPosition+1:])
 
