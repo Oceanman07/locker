@@ -1,9 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
 	"sync"
 	"sync/atomic"
+	"syscall"
 
 	"Locker/internal/fileutil"
 	"Locker/internal/locker"
@@ -26,7 +30,11 @@ func lockRegularFile(args parser.CmdArgs, passphrase string) {
 }
 
 func lockDirectory(args parser.CmdArgs, passphrase string) {
-	// lock 5 files at the same time
+	// instead of let control+c kill the process -> cancel the context
+	// the whole point is to keep processing task finish
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT)
+	defer stop()
+
 	semaphore := make(chan struct{}, args.Concurrency)
 	var wg sync.WaitGroup
 
@@ -45,26 +53,30 @@ func lockDirectory(args parser.CmdArgs, passphrase string) {
 		wg.Add(1)
 
 		go func() {
+			defer wg.Done()
 			// get a slot in semaphore, if semaphore is full then the current gorountine will wait
 			semaphore <- struct{}{}
-
-			result, err := locker.Lock(
-				passphrase,
-				path,
-				args.LockArgs.OverwriteWithGarbagePasses,
-				args.LockArgs.KeepAfterLock,
-				args.LockArgs.LockAsText,
-			)
-			if err != nil {
-				fmt.Println(err.Error())
-			} else {
-				counter.Add(1)
-				fmt.Printf("[%d/%d] Locked   %s\n", counter.Load(), total, result)
-			}
-
 			// release to let the next gorountine join the semaphore
-			<-semaphore
-			wg.Done()
+			defer func() { <-semaphore }()
+
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				result, err := locker.Lock(
+					passphrase,
+					path,
+					args.LockArgs.OverwriteWithGarbagePasses,
+					args.LockArgs.KeepAfterLock,
+					args.LockArgs.LockAsText,
+				)
+				if err != nil {
+					fmt.Println(err.Error())
+				} else {
+					counter.Add(1)
+					fmt.Printf("[%d/%d] Locked   %s\n", counter.Load(), total, result)
+				}
+			}
 		}()
 	}
 
