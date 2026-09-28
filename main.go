@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"sync"
+	"sync/atomic"
 
 	"Locker/internal/fileutil"
 	"Locker/internal/locker"
@@ -24,6 +26,10 @@ func lockRegularFile(args parser.CmdArgs, passphrase string) {
 }
 
 func lockDirectory(args parser.CmdArgs, passphrase string) {
+	// lock 5 files at the same time
+	semaphore := make(chan struct{}, 5)
+	var wg sync.WaitGroup
+
 	filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
 
 	var normalFiles []string
@@ -34,22 +40,35 @@ func lockDirectory(args parser.CmdArgs, passphrase string) {
 	}
 
 	total := len(normalFiles)
-	var count int
+	var counter atomic.Int64
 	for _, path := range normalFiles {
-		result, err := locker.Lock(
-			passphrase,
-			path,
-			args.LockArgs.OverwriteWithGarbagePasses,
-			args.LockArgs.KeepAfterLock,
-			args.LockArgs.LockAsText,
-		)
-		if err != nil {
-			fmt.Println(err.Error())
-		} else {
-			count++
-			fmt.Printf("[%d/%d] Locked   %s\n", count, total, result)
-		}
+		wg.Add(1)
+
+		go func() {
+			// get a slot in semaphore, if semaphore is full then the current gorountine will wait
+			semaphore <- struct{}{}
+
+			result, err := locker.Lock(
+				passphrase,
+				path,
+				args.LockArgs.OverwriteWithGarbagePasses,
+				args.LockArgs.KeepAfterLock,
+				args.LockArgs.LockAsText,
+			)
+			if err != nil {
+				fmt.Println(err.Error())
+			} else {
+				counter.Add(1)
+				fmt.Printf("[%d/%d] %s\n", counter.Load(), total, result)
+			}
+
+			// release to let the next gorountine join the semaphore
+			<-semaphore
+			wg.Done()
+		}()
 	}
+
+	wg.Wait()
 }
 
 func unlockRegularFile(args parser.CmdArgs, passphrase string) {
