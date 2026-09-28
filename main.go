@@ -98,6 +98,9 @@ func unlockRegularFile(args parser.CmdArgs, passphrase string) {
 }
 
 func unlockDirectory(args parser.CmdArgs, passphrase string) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT)
+	defer stop()
+
 	semaphore := make(chan struct{}, args.Concurrency)
 	var wg sync.WaitGroup
 
@@ -110,23 +113,29 @@ func unlockDirectory(args parser.CmdArgs, passphrase string) {
 		wg.Add(1)
 
 		go func() {
+			defer wg.Done()
+			// get a slot in semaphore, if semaphore is full then the current gorountine will wait
 			semaphore <- struct{}{}
+			// release to let the next gorountine join the semaphore
+			defer func() { <-semaphore }()
 
-			result, err := locker.Unlock(
-				passphrase,
-				path,
-				args.UnlockArgs.KeepAfterUnlock,
-				args.UnlockArgs.UnlockAsText,
-			)
-			if err != nil {
-				fmt.Println(err.Error())
-			} else {
-				counter.Add(1)
-				fmt.Printf("[%d/%d] Unlock   %s\n", counter.Load(), total, result)
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				result, err := locker.Unlock(
+					passphrase,
+					path,
+					args.UnlockArgs.KeepAfterUnlock,
+					args.UnlockArgs.UnlockAsText,
+				)
+				if err != nil {
+					fmt.Println(err.Error())
+				} else {
+					counter.Add(1)
+					fmt.Printf("[%d/%d] Unlock   %s\n", counter.Load(), total, result)
+				}
 			}
-
-			<-semaphore
-			wg.Done()
 		}()
 	}
 
