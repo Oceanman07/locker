@@ -52,39 +52,38 @@ func lockDirectory(args parser.CmdArgs, passphrase string) {
 	}
 }
 
-func processUnlocking(args parser.CmdArgs, passphrase string) {
-	if fileutil.IsRegularFile(args.Path) {
+func unlockRegularFile(args parser.CmdArgs, passphrase string) {
+	result, err := locker.Unlock(
+		passphrase,
+		args.Path,
+		args.UnlockArgs.KeepAfterUnlock,
+		args.UnlockArgs.UnlockAsText,
+	)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	fmt.Println("[+] Unlocked  ", result)
+}
+
+func unlockDirectory(args parser.CmdArgs, passphrase string) {
+	filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
+	encryptedFiles := fileutil.FilterFiles(filePaths, true)
+
+	total := len(encryptedFiles)
+	var count int
+	for _, path := range encryptedFiles {
 		result, err := locker.Unlock(
 			passphrase,
-			args.Path,
+			path,
 			args.UnlockArgs.KeepAfterUnlock,
 			args.UnlockArgs.UnlockAsText,
 		)
 		if err != nil {
 			fmt.Println(err.Error())
 		} else {
-			fmt.Println("[+] Unlocked  ", result)
-		}
-
-	} else {
-		filePaths := fileutil.ListDir(args.Path, args.ProcessSubdirRecursively)
-		encryptedFiles := fileutil.FilterFiles(filePaths, true)
-
-		total := len(encryptedFiles)
-		var count int
-		for _, path := range encryptedFiles {
-			result, err := locker.Unlock(
-				passphrase,
-				path,
-				args.UnlockArgs.KeepAfterUnlock,
-				args.UnlockArgs.UnlockAsText,
-			)
-			if err != nil {
-				fmt.Println(err.Error())
-			} else {
-				count++
-				fmt.Printf("[%d/%d] Unlock   %s\n", count, total, result)
-			}
+			count++
+			fmt.Printf("[%d/%d] Unlock   %s\n", count, total, result)
 		}
 	}
 }
@@ -137,6 +136,10 @@ func main() {
 		}
 
 	} else if args.Mode == locker.UnlockMode {
-		processUnlocking(args, passphrase)
+		if fileutil.IsRegularFile(args.Path) {
+			unlockRegularFile(args, passphrase)
+		} else {
+			unlockDirectory(args, passphrase)
+		}
 	}
 }
