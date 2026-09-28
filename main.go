@@ -52,7 +52,7 @@ func lockDirectory(args parser.CmdArgs, passphrase string) {
 	for _, path := range normalFiles {
 		wg.Add(1)
 
-		go func() {
+		go func(path string) {
 			defer wg.Done()
 			// get a slot in semaphore, if semaphore is full then the current gorountine will wait
 			semaphore <- struct{}{}
@@ -73,11 +73,11 @@ func lockDirectory(args parser.CmdArgs, passphrase string) {
 				if err != nil {
 					fmt.Println(err.Error())
 				} else {
-					counter.Add(1)
-					fmt.Printf("[%d/%d] Locked   %s\n", counter.Load(), total, result)
+					num := counter.Add(1)
+					fmt.Printf("[%d/%d] Locked   %s\n", num, total, result)
 				}
 			}
-		}()
+		}(path)
 	}
 
 	wg.Wait()
@@ -112,7 +112,7 @@ func unlockDirectory(args parser.CmdArgs, passphrase string) {
 	for _, path := range encryptedFiles {
 		wg.Add(1)
 
-		go func() {
+		go func(path string) {
 			defer wg.Done()
 			// get a slot in semaphore, if semaphore is full then the current gorountine will wait
 			semaphore <- struct{}{}
@@ -132,11 +132,11 @@ func unlockDirectory(args parser.CmdArgs, passphrase string) {
 				if err != nil {
 					fmt.Println(err.Error())
 				} else {
-					counter.Add(1)
-					fmt.Printf("[%d/%d] Unlock   %s\n", counter.Load(), total, result)
+					num := counter.Add(1)
+					fmt.Printf("[%d/%d] Unlock   %s\n", num, total, result)
 				}
 			}
-		}()
+		}(path)
 	}
 
 	wg.Wait()
