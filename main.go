@@ -14,7 +14,7 @@ import (
 	"Locker/internal/parser"
 )
 
-func lockRegularFile(args parser.CmdArgs, passphrase string) {
+func lockRegularFile(args *parser.CmdArgs, passphrase string) {
 	result, err := locker.Lock(
 		passphrase,
 		args.Path,
@@ -29,7 +29,7 @@ func lockRegularFile(args parser.CmdArgs, passphrase string) {
 	fmt.Println("[+] Locked  ", result)
 }
 
-func lockDirectory(args parser.CmdArgs, passphrase string) {
+func lockDirectory(args *parser.CmdArgs, passphrase string) {
 	// instead of let control+c kill the process -> cancel the context
 	// the whole point is to keep processing task finish
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT)
@@ -63,19 +63,14 @@ func lockDirectory(args parser.CmdArgs, passphrase string) {
 			case <-ctx.Done():
 				return
 			default:
-				result, err := locker.Lock(
-					passphrase,
-					path,
-					args.LockArgs.OverwriteWithGarbagePasses,
-					args.LockArgs.KeepAfterLock,
-					args.LockArgs.LockAsText,
-				)
-				if err != nil {
-					fmt.Println(err.Error())
-				} else {
-					num := counter.Add(1)
-					fmt.Printf("[%d/%d] Locked   %s\n", num, total, result)
-				}
+				// before args.Path is the directory path
+				// after getting all the files in the directory
+				// we process each file in there (path is now the file path to be processed)
+				args.Path = path
+				lockRegularFile(args, passphrase)
+
+				num := counter.Add(1)
+				fmt.Printf("[%d/%d] Locked files\n", num, total)
 			}
 		}(path)
 	}
@@ -83,7 +78,7 @@ func lockDirectory(args parser.CmdArgs, passphrase string) {
 	wg.Wait()
 }
 
-func unlockRegularFile(args parser.CmdArgs, passphrase string) {
+func unlockRegularFile(args *parser.CmdArgs, passphrase string) {
 	result, err := locker.Unlock(
 		passphrase,
 		args.Path,
@@ -97,7 +92,7 @@ func unlockRegularFile(args parser.CmdArgs, passphrase string) {
 	fmt.Println("[+] Unlocked  ", result)
 }
 
-func unlockDirectory(args parser.CmdArgs, passphrase string) {
+func unlockDirectory(args *parser.CmdArgs, passphrase string) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT)
 	defer stop()
 
@@ -123,18 +118,14 @@ func unlockDirectory(args parser.CmdArgs, passphrase string) {
 			case <-ctx.Done():
 				return
 			default:
-				result, err := locker.Unlock(
-					passphrase,
-					path,
-					args.UnlockArgs.KeepAfterUnlock,
-					args.UnlockArgs.UnlockAsText,
-				)
-				if err != nil {
-					fmt.Println(err.Error())
-				} else {
-					num := counter.Add(1)
-					fmt.Printf("[%d/%d] Unlock   %s\n", num, total, result)
-				}
+				// before args.Path is the directory path
+				// after getting all the files in the directory
+				// we process each file in there (path is now the file path to be processed)
+				args.Path = path
+				unlockRegularFile(args, passphrase)
+
+				num := counter.Add(1)
+				fmt.Printf("[%d/%d] Unlocked files\n", num, total)
 			}
 		}(path)
 	}
@@ -184,16 +175,16 @@ func main() {
 		fmt.Println()
 
 		if fileutil.IsRegularFile(args.Path) {
-			lockRegularFile(args, passphrase)
+			lockRegularFile(&args, passphrase)
 		} else {
-			lockDirectory(args, passphrase)
+			lockDirectory(&args, passphrase)
 		}
 
 	} else if args.Mode == locker.UnlockMode {
 		if fileutil.IsRegularFile(args.Path) {
-			unlockRegularFile(args, passphrase)
+			unlockRegularFile(&args, passphrase)
 		} else {
-			unlockDirectory(args, passphrase)
+			unlockDirectory(&args, passphrase)
 		}
 	}
 }
