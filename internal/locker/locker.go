@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"Locker/internal/fileutil"
 
@@ -104,7 +105,7 @@ func encryptToText(gcm cipher.AEAD, originalFilePath string) (string, error) {
 	}
 
 	// text content for printing to the console
-	var result string
+	var result strings.Builder
 
 	originalFile, _ := os.Open(originalFilePath)
 	defer originalFile.Close()
@@ -124,10 +125,10 @@ func encryptToText(gcm cipher.AEAD, originalFilePath string) (string, error) {
 
 		nonce := getNonceForGCM()
 		encryptedChunk := gcm.Seal(preallocateBufferForDst, nonce, chunk[:n], nil)
-		result = result + hex.EncodeToString(encryptedChunk)
+		result.WriteString(hex.EncodeToString(encryptedChunk))
 	}
 
-	return "\n" + result, nil
+	return "\n" + result.String(), nil
 }
 
 func overWriteWithGarbage(originalFilePath string, passes int) {
@@ -283,7 +284,7 @@ func decryptToText(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 	}
 
 	// text content for printing to the console
-	var result string
+	var result strings.Builder
 
 	encryptedFile, _ := os.Open(encryptedFilePath)
 	defer encryptedFile.Close()
@@ -327,11 +328,11 @@ func decryptToText(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 			return "", errors.New("[-] The original file is not a text file")
 		}
 
-		result = result + string(originalChunk)
+		result.WriteString(string(originalChunk))
 	}
-	result = "\n" + result + "\n----------\n" + "from file: " + originalFileName
 
-	return result, nil
+	finalResult := "\n" + result.String() + "\n----------\n" + "from file: " + originalFileName
+	return finalResult, nil
 }
 
 func Unlock(passphrase, encryptedFilePath string, keepAfterUnlock, unlockAsText bool) (string, error) {
