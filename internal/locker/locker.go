@@ -162,6 +162,15 @@ func overWriteWithGarbage(originalFilePath string, passes int) {
 }
 
 func Lock(passphrase, filePath string, overWriteWithGarbagePasses int, keepAfterLock, lockAsText bool) (string, error) {
+	defer func() {
+		if !keepAfterLock {
+			if !lockAsText {
+				overWriteWithGarbage(filePath, overWriteWithGarbagePasses)
+				os.Remove(filePath)
+			}
+		}
+	}()
+
 	salt := make([]byte, saltSize)
 	rand.Read(salt)
 
@@ -169,26 +178,17 @@ func Lock(passphrase, filePath string, overWriteWithGarbagePasses int, keepAfter
 	block, _ := aes.NewCipher(key)
 	gcm, _ := cipher.NewGCM(block)
 
-	var result string
 	if lockAsText {
 		encryptedFile, err := encryptToText(gcm, filePath)
 		if err != nil {
 			return "", err
 		}
-		result = encryptedFile
+		return encryptedFile, nil
+
 	} else {
 		encryptedFile := encryptToNewFile(gcm, salt, filePath)
-		result = encryptedFile
+		return encryptedFile, nil
 	}
-
-	if !keepAfterLock {
-		if !lockAsText {
-			overWriteWithGarbage(filePath, overWriteWithGarbagePasses)
-			os.Remove(filePath)
-		}
-	}
-
-	return result, nil
 }
 
 func getSaltFromEncryptedFile(encryptedFilePath string) []byte {
@@ -338,33 +338,32 @@ func decryptToText(gcm cipher.AEAD, encryptedFilePath string) (string, error) {
 }
 
 func Unlock(passphrase, encryptedFilePath string, keepAfterUnlock, unlockAsText bool) (string, error) {
+	defer func() {
+		if !keepAfterUnlock {
+			if !unlockAsText {
+				os.Remove(encryptedFilePath)
+			}
+		}
+	}()
+
 	salt := getSaltFromEncryptedFile(encryptedFilePath)
 
 	key := driveKey([]byte(passphrase), salt)
 	block, _ := aes.NewCipher(key)
 	gcm, _ := cipher.NewGCM(block)
 
-	var result string
 	if unlockAsText {
 		originalFile, err := decryptToText(gcm, encryptedFilePath)
 		if err != nil {
 			return "", err
 		}
-		result = originalFile
+		return originalFile, nil
 
 	} else {
 		originalFile, err := decryptToNewFile(gcm, encryptedFilePath)
 		if err != nil {
 			return "", err
 		}
-		result = originalFile
+		return originalFile, nil
 	}
-
-	if !keepAfterUnlock {
-		if !unlockAsText {
-			os.Remove(encryptedFilePath)
-		}
-	}
-
-	return result, nil
 }
