@@ -134,6 +134,27 @@ func unlockDirectory(args *parser.CmdArgs, passphrase string) {
 	wg.Wait()
 }
 
+func handleInputPassphrase(mode string) (string, error) {
+	defer fmt.Println()
+	fmt.Print("passphrase:")
+
+	passphrase := locker.GetPassphrase()
+	// when unlocking we just need the passphrase while locking needs to confirm again
+	if mode == locker.UnlockMode {
+		return passphrase, nil
+	}
+
+	// reconfirm passphrase when locking
+	fmt.Print("\nconfirm: ")
+
+	confirmPassphrase := locker.GetPassphrase()
+	if confirmPassphrase == passphrase {
+		return passphrase, nil
+	}
+
+	return "", locker.PassphraseNotMatchErr
+}
+
 func main() {
 	args, err := parser.ParseArgs()
 	if err != nil {
@@ -158,26 +179,18 @@ func main() {
 		return
 	}
 
-	fmt.Print("passphrase:")
-	passphrase := locker.GetPassphrase()
-	fmt.Println()
-
 	if args.Mode == locker.LockMode {
-		if !args.LockArgs.SkipValidatePassphrase {
-			if !locker.IsValidPassphrase(passphrase) {
-				fmt.Println("[-] Passphrase must contain at least 4 chars, lowercase, uppercase, 1 number and 1 special char `/()_-+*&^%$#@!:.?[]|~;=`")
-				return
-			}
-		}
-		// reconfirm passphrase
-		fmt.Print("confirm: ")
-		confirmPassphrase := locker.GetPassphrase()
-		if confirmPassphrase != passphrase {
-			fmt.Println()
-			fmt.Println("[-] Passphrases didn't match")
+		passphrase, err := handleInputPassphrase(locker.LockMode)
+		if err != nil {
+			fmt.Println(err.Error())
 			return
 		}
-		fmt.Println()
+
+		// checking/not checking for safety passphrase
+		if !args.LockArgs.SkipValidatePassphrase && !locker.IsValidPassphrase(passphrase) {
+			fmt.Println("[-] Passphrase must contain at least 4 chars, lowercase, uppercase, 1 number and 1 special char `/()_-+*&^%$#@!:.?[]|~;=`")
+			return
+		}
 
 		if fileutil.IsRegularFile(args.Path) {
 			lockRegularFile(&args, passphrase)
@@ -186,6 +199,8 @@ func main() {
 		}
 
 	} else if args.Mode == locker.UnlockMode {
+		passphrase, _ := handleInputPassphrase(locker.UnlockMode)
+
 		if fileutil.IsRegularFile(args.Path) {
 			unlockRegularFile(&args, passphrase)
 		} else {

@@ -30,6 +30,8 @@ const (
 	chunkForEncryptedFile = 12 + chunkForNormalFile + 16
 )
 
+var PassphraseNotMatchErr error = errors.New("Passphrases didn't match")
+
 func driveKey(passphrase, salt []byte) []byte {
 	return argon2.IDKey(passphrase, salt, 3, 64*1024, 4, 32)
 }
