@@ -69,8 +69,10 @@ func encryptToNewFile(gcm cipher.AEAD, salt []byte, originalFilePath string) str
 	writer := bufio.NewWriter(encryptedFile)
 	defer writer.Flush()
 
-	encryptedFileName, encryptedFileNameLength := encryptFileName(gcm, originalFilePath)
+	// write salt at the beginning
 	writer.Write(salt)
+	// write encrypted file name to file
+	encryptedFileName, encryptedFileNameLength := encryptFileName(gcm, originalFilePath)
 	writer.Write(encryptedFileNameLength)
 	writer.Write(encryptedFileName)
 
@@ -101,7 +103,7 @@ func encryptToNewFile(gcm cipher.AEAD, salt []byte, originalFilePath string) str
 	return newFileName
 }
 
-func encryptToText(gcm cipher.AEAD, originalFilePath string) (string, error) {
+func encryptToText(gcm cipher.AEAD, salt []byte, originalFilePath string) (string, error) {
 	if !fileutil.IsTextFile(originalFilePath) {
 		return "", errors.New("[-] Not a text file")
 	}
@@ -112,6 +114,12 @@ func encryptToText(gcm cipher.AEAD, originalFilePath string) (string, error) {
 	originalFile, _ := os.Open(originalFilePath)
 	defer originalFile.Close()
 	reader := bufio.NewReader(originalFile)
+
+	// write salt as hex at the beginning
+	result.WriteString(hex.EncodeToString(salt))
+	encryptedFileName, encryptedFileNameLength := encryptFileName(gcm, originalFilePath)
+	result.WriteString(hex.EncodeToString(encryptedFileNameLength))
+	result.WriteString(hex.EncodeToString(encryptedFileName))
 
 	// if dst argument of gcm.Seal/Open is nil, it will allocate new slice every time
 	// 100 loops -> 100 allocations
@@ -127,6 +135,7 @@ func encryptToText(gcm cipher.AEAD, originalFilePath string) (string, error) {
 
 		nonce := getNonceForGCM()
 		encryptedChunk := gcm.Seal(preallocateBufferForDst, nonce, chunk[:n], nil)
+		result.WriteString(hex.EncodeToString(nonce))
 		result.WriteString(hex.EncodeToString(encryptedChunk))
 	}
 
@@ -179,7 +188,7 @@ func Lock(passphrase, filePath string, overWriteWithGarbagePasses int, keepAfter
 	gcm, _ := cipher.NewGCM(block)
 
 	if lockAsText {
-		encryptedFile, err := encryptToText(gcm, filePath)
+		encryptedFile, err := encryptToText(gcm, salt, filePath)
 		if err != nil {
 			return "", err
 		}
