@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -136,7 +137,11 @@ func unlockDirectory(args *parser.CmdArgs, passphrase string) {
 func main() {
 	args, err := parser.ParseArgs()
 	if err != nil {
-		fmt.Println(err)
+		if errors.Is(err, parser.InvalidCmdLengthErr) {
+			parser.PrintHelp()
+		} else {
+			fmt.Println(err)
+		}
 		return
 	}
 

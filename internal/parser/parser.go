@@ -18,6 +18,8 @@ const (
 	defaultConcurrency                = 7
 )
 
+var InvalidCmdLengthErr error = errors.New("invalid cmd length")
+
 type CmdArgs struct {
 	Help                     bool
 	Mode                     string
@@ -98,7 +100,7 @@ func parseUnlockArgs() (CmdArgs, error) {
 
 func ParseArgs() (CmdArgs, error) {
 	if len(os.Args) == 1 {
-		return CmdArgs{}, errors.New("usage: locker -h")
+		return CmdArgs{}, InvalidCmdLengthErr
 	}
 
 	mode := os.Args[subcommandPosition]
