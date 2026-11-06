@@ -10,9 +10,9 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"Locker/internal/fileutil"
-	"Locker/internal/locker"
-	"Locker/internal/parser"
+	"github.com/Oceanman07/locker/internal/fileutil"
+	"github.com/Oceanman07/locker/internal/locker"
+	"github.com/Oceanman07/locker/internal/parser"
 )
 
 func lockRegularFile(args *parser.CmdArgs, passphrase string) {

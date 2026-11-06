@@ -1,4 +1,4 @@
-module Locker
+module github.com/Oceanman07/locker
 
 go 1.25.5
 

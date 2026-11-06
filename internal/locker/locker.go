@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"Locker/internal/fileutil"
+	"github.com/Oceanman07/locker/internal/fileutil"
 
 	"golang.org/x/crypto/argon2"
 )

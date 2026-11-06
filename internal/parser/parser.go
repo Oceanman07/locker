@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"Locker/internal/locker"
+	"github.com/Oceanman07/locker/internal/locker"
 )
 
 const (
